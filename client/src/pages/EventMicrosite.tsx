@@ -17,6 +17,14 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -34,7 +42,7 @@ import {
   Clock,
   XCircle,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, differenceInCalendarDays } from "date-fns";
 
 // ── Theming ──────────────────────────────────────────────────────────────────
 
@@ -86,11 +94,18 @@ export default function EventMicrosite() {
   const [lookupFound, setLookupFound] = useState(false); // true after successful lookup
   const [declineLoading, setDeclineLoading] = useState(false);
   const [declineDone, setDeclineDone] = useState(false);
+  const [declineMessage, setDeclineMessage] = useState("");
 
   const [regName, setRegName] = useState("");
   const [regEmail, setRegEmail] = useState("");
   const [regPhone, setRegPhone] = useState("");
   const [regDone, setRegDone] = useState(false);
+  const [regError, setRegError] = useState("");
+  const [selectedRoom, setSelectedRoom] = useState<any>(null);
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookingError, setBookingError] = useState("");
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [receipt, setReceipt] = useState<any>(null);
 
   const { data: event, isLoading, error } = useQuery({
     queryKey: ["microsite", eventCode],
@@ -98,6 +113,16 @@ export default function EventMicrosite() {
     enabled: !!eventCode,
     retry: false,
   });
+
+  // Simple telemetry/reporting helper: send raw error to console (telemetry)
+  const reportError = (err: any, setFriendly?: (s: string) => void, friendlyMsg?: string) => {
+    try {
+      console.error("telemetry:microsite_error", err);
+    } catch (e) {
+      // ignore
+    }
+    if (setFriendly) setFriendly(friendlyMsg || "Something went wrong. Please try again later.");
+  };
 
   const registerMutation = useMutation({
     mutationFn: async (body: { name: string; email: string; phone: string }) => {
@@ -107,12 +132,13 @@ export default function EventMicrosite() {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({ message: 'Registration failed' }));
         throw new Error(err.message ?? "Registration failed");
       }
       return res.json();
     },
     onSuccess: () => setRegDone(true),
+    onError: (err: any) => reportError(err, setRegError, "Unable to register right now. Please try again later."),
   });
 
   const themeStyle = useMemo(
@@ -127,14 +153,14 @@ export default function EventMicrosite() {
     try {
       const result = await lookupGuest(bookingRef.trim());
       if (!result) {
-        setLookupError("No booking found with that reference. Please check and try again.");
+        setLookupError("We couldn't find a booking with that reference. Please double-check or register your interest.");
       } else {
         setLookupFound(true);
         // Store token in state so we can navigate on "View Portal" click
         (window as any).__guestToken = result.token;
       }
     } catch (err: any) {
-      setLookupError(err.message);
+      reportError(err, setLookupError, "An unexpected error occurred. Please try again later.");
     } finally {
       setLookupLoading(false);
     }
@@ -146,7 +172,8 @@ export default function EventMicrosite() {
       const res = await fetch("/api/guest/decline", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingRef: bookingRef.trim() }),
+        // include optional message in UI; backend may ignore if not supported
+        body: JSON.stringify({ bookingRef: bookingRef.trim(), message: declineMessage || undefined }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -154,7 +181,7 @@ export default function EventMicrosite() {
       }
       setDeclineDone(true);
     } catch (err: any) {
-      setLookupError(err.message);
+      reportError(err, setLookupError, "Failed to record response. Please try again later.");
     } finally {
       setDeclineLoading(false);
     }
@@ -169,7 +196,10 @@ export default function EventMicrosite() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading event details…</p>
+        </div>
       </div>
     );
   }
@@ -178,7 +208,7 @@ export default function EventMicrosite() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 text-center px-4">
         <div className="text-6xl">404</div>
-        <h1 className="text-2xl font-serif font-semibold">Event not found</h1>
+        <h1 className="text-2xl font-sans font-semibold">Event not found</h1>
         <p className="text-muted-foreground">
           The event code <strong>{eventCode}</strong> does not exist or is not yet published.
         </p>
@@ -189,6 +219,16 @@ export default function EventMicrosite() {
 
   const eventDate = event.date ? new Date(event.date) : null;
   const primaryColor: string = (themeStyle as any)["--event-primary"] ?? "#1B2D5B";
+  const hotelNights = event?.hotel?.checkIn && event?.hotel?.checkOut
+    ? differenceInCalendarDays(new Date(event.hotel.checkOut), new Date(event.hotel.checkIn))
+    : 1;
+
+  const sampleRooms = event?.hotel
+    ? [
+        { id: 'standard', name: 'Standard Room', price: 2000 },
+        { id: 'deluxe', name: 'Deluxe Room', price: 3200 },
+      ]
+    : [];
 
   return (
     <div className="min-h-screen bg-background" style={themeStyle}>
@@ -219,7 +259,7 @@ export default function EventMicrosite() {
           <p className="text-white/70 text-xs font-semibold uppercase tracking-widest mb-3">
             You are invited
           </p>
-          <h1 className="text-4xl md:text-6xl font-serif font-bold mb-5 drop-shadow-md">
+          <h1 className="text-4xl md:text-6xl font-sans font-bold mb-5 drop-shadow-md">
             {event.name}
           </h1>
           <div className="flex flex-wrap items-center justify-center gap-5 text-white/80 text-sm mb-4">
@@ -241,6 +281,53 @@ export default function EventMicrosite() {
               {event.description}
             </p>
           )}
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button className="px-6 py-3 bg-white text-primary font-semibold shadow-md hover:shadow-lg">
+                  RSVP Now
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>RSVP for {event.name}</DialogTitle>
+                  <DialogDescription>
+                    Please provide your details to reserve your place. We will send a confirmation to the email provided.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2">
+                  {!regDone ? (
+                    <>
+                      <div>
+                        <Label className="text-sm">Full name</Label>
+                        <Input placeholder="eg: John Doe" value={regName} onChange={(e) => setRegName((e.target as HTMLInputElement).value)} />
+                      </div>
+                      <div>
+                        <Label className="text-sm">Email</Label>
+                        <Input placeholder="eg: you@example.com" value={regEmail} onChange={(e) => setRegEmail((e.target as HTMLInputElement).value)} />
+                      </div>
+                      <div>
+                        <Label className="text-sm">Phone (optional)</Label>
+                        <Input placeholder="eg: +91 98765 43210" value={regPhone} onChange={(e) => setRegPhone((e.target as HTMLInputElement).value)} />
+                      </div>
+                      <div className="flex justify-end mt-2">
+                        <Button className="bg-primary text-white" onClick={handleRegister}>
+                          Confirm RSVP
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-6">
+                      <CheckCircle2 className="w-12 h-12 mx-auto text-green-500" />
+                      <p className="font-semibold mt-3">You're confirmed</p>
+                      <p className="text-sm text-muted-foreground mt-1">A confirmation has been sent to {regEmail || 'your email'}.</p>
+                    </div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
       </div>
 
@@ -295,64 +382,144 @@ export default function EventMicrosite() {
         {/* Event Schedule */}
         {event.itinerary && event.itinerary.length > 0 && (
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-5">Event Schedule</h2>
-            <div className="space-y-0">
-              {event.itinerary.map((item: any, i: number) => (
-                <div key={i} className="flex gap-4 items-start">
-                  {/* Timeline stem */}
-                  <div className="flex flex-col items-center shrink-0">
-                    <div
-                      className="w-3 h-3 rounded-full mt-1.5 ring-2 ring-offset-2"
-                      style={{ backgroundColor: primaryColor, "--tw-ring-color": `${primaryColor}40` } as any}
-                    />
-                    {i < event.itinerary.length - 1 && (
-                      <div className="w-px flex-1 bg-border mt-1 min-h-[32px]" />
-                    )}
-                  </div>
-                  {/* Content */}
-                  <div className="pb-5 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-medium text-sm">{item.title}</p>
-                      {item.isMandatory && (
-                        <Badge variant="secondary" className="text-xs">Mandatory</Badge>
-                      )}
-                    </div>
-                    {(item.startTime || item.location) && (
-                      <div className="flex flex-wrap gap-3 mt-0.5">
-                        {item.startTime && (
-                          <p className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {typeof item.startTime === "string"
-                              ? item.startTime
-                              : format(new Date(item.startTime), "h:mm a")}
-                            {item.endTime
-                              ? ` – ${typeof item.endTime === "string" ? item.endTime : format(new Date(item.endTime), "h:mm a")}`
-                              : ""}
-                          </p>
-                        )}
-                        {item.location && (
-                          <p className="text-xs text-muted-foreground flex items-center gap-1">
-                            <MapPin className="w-3 h-3" />
-                            {item.location}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    {item.description && (
-                      <p className="text-xs text-muted-foreground mt-1">{item.description}</p>
-                    )}
-                  </div>
+            <h2 className="text-xl font-sans font-semibold mb-5">Event Schedule</h2>
+                <div className="space-y-4">
+                  {event.itinerary.map((item: any, i: number) => (
+                    <Card key={i} className="border-muted">
+                      <CardContent className="flex gap-4 items-start">
+                        <div className="shrink-0">
+                          <div className="text-xs text-muted-foreground mb-1">{item.startTime ? (typeof item.startTime === 'string' ? item.startTime : format(new Date(item.startTime), 'h:mm a')) : ''}</div>
+                          <div className="w-10 h-10 rounded-md bg-white/10 flex items-center justify-center" style={{ color: primaryColor }}>
+                            <Clock className="w-4 h-4" />
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <p className="font-medium">{item.title}</p>
+                            {item.isMandatory && <Badge variant="secondary" className="text-xs">Mandatory</Badge>}
+                          </div>
+                          {item.location && <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2"><MapPin className="w-3 h-3" />{item.location}</p>}
+                          {item.description && <p className="text-sm text-muted-foreground mt-2">{item.description}</p>}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
-              ))}
-            </div>
           </section>
         )}
 
         <Separator />
 
+        {/* ── Booking (UI-only) ── */}
+        {event.hotel && (
+          <section>
+            <h2 className="text-xl font-sans font-semibold mb-4">Booking</h2>
+            <p className="text-sm text-muted-foreground mb-4">Select a room to view the estimated price summary and continue to payment.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {sampleRooms.map((r) => (
+                <Card key={r.id} className={`border ${selectedRoom?.id === r.id ? 'ring-2 ring-offset-2' : ''}`}>
+                  <CardContent className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">{r.name}</p>
+                      <p className="text-sm text-muted-foreground mt-1">{hotelNights} night{hotelNights > 1 ? 's' : ''} · {event.hotel.name}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-lg">₹{(r.price * hotelNights).toLocaleString('en-IN')}</div>
+                      <div className="mt-2 flex gap-2 justify-end">
+                        <Button size="sm" variant={selectedRoom?.id === r.id ? 'secondary' : 'outline'} onClick={() => setSelectedRoom(r)}>
+                          {selectedRoom?.id === r.id ? 'Selected' : 'Select'}
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm">Estimated total</p>
+                <p className="text-xl font-bold">{selectedRoom ? `₹${(selectedRoom.price * hotelNights).toLocaleString('en-IN')}` : '—'}</p>
+              </div>
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => { setSelectedRoom(null); setBookingError(''); }}>Reset</Button>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button
+                      onClick={() => {
+                        if (!selectedRoom) return setBookingError('Please select a room before continuing.');
+                        // Simulate continue to payment: open confirmation modal (UI-only)
+                        try {
+                          setBookingLoading(true);
+                          setReceipt({ id: `RCPT-${Date.now()}`, room: selectedRoom, total: selectedRoom.price * hotelNights, nights: hotelNights });
+                          setShowConfirmation(true);
+                        } catch (err) {
+                          reportError(err, setBookingError, 'Unable to proceed to payment. Please try again.');
+                        } finally {
+                          setBookingLoading(false);
+                        }
+                      }}
+                      className="bg-primary text-white"
+                    >
+                      Continue to payment
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Booking Confirmation</DialogTitle>
+                      <DialogDescription>Simulation: this is a UI-only receipt. Use your personalised portal to complete payment.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                      {receipt ? (
+                        <div>
+                          <p className="font-medium">Receipt #{receipt.id}</p>
+                          <p className="text-sm text-muted-foreground">{receipt.room.name} · {receipt.nights} night{receipt.nights > 1 ? 's' : ''}</p>
+                          <div className="mt-3 flex gap-2">
+                            <Button onClick={() => {
+                              try {
+                                // Download simple ICS file for the stay
+                                const start = event.hotel.checkIn ? new Date(event.hotel.checkIn) : new Date();
+                                const end = event.hotel.checkOut ? new Date(event.hotel.checkOut) : new Date(Date.now() + 24*60*60*1000);
+                                const ics = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:${receipt.id}\nDTSTAMP:${new Date().toISOString()}\nDTSTART:${start.toISOString()}\nDTEND:${end.toISOString()}\nSUMMARY:${event.name} - ${receipt.room.name}\nDESCRIPTION:${event.description || ''}\nEND:VEVENT\nEND:VCALENDAR`;
+                                const blob = new Blob([ics], { type: 'text/calendar' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `${event.name.replace(/\s+/g,'_')}_${receipt.id}.ics`;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                              } catch (err) {
+                                reportError(err, setBookingError, 'Could not download calendar file.');
+                              }
+                            }}>Download .ics</Button>
+                            <Button onClick={() => {
+                              try {
+                                const subject = encodeURIComponent(`Invitation & booking: ${event.name}`);
+                                const body = encodeURIComponent(`I've booked ${receipt.room.name} for ${receipt.nights} night(s) at ${event.name}. Receipt #${receipt.id}`);
+                                window.open(`mailto:?subject=${subject}&body=${body}`);
+                              } catch (err) {
+                                reportError(err, setBookingError, 'Unable to share via email.');
+                              }
+                            }}>Share</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No receipt available.</p>
+                      )}
+                      {bookingError && <p className="text-sm text-destructive">{bookingError}</p>}
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+            {bookingError && <p className="text-sm text-destructive mt-3">{bookingError}</p>}
+          </section>
+        )}
+
         {/* ── Access Portal ── */}
         <section>
-          <h2 className="text-xl font-serif font-semibold mb-2">Access Your Invitation</h2>
+          <h2 className="text-xl font-sans font-semibold mb-2">Access Your Invitation</h2>
           <p className="text-sm text-muted-foreground mb-6">
             If you received a booking reference from the organiser, use it below to access your personalised portal or to let us know you won't be attending.
           </p>
@@ -427,6 +594,12 @@ export default function EventMicrosite() {
                         I Won't Be Attending
                       </Button>
                     </div>
+                    {/* Optional decline message (UI-only) */}
+                    <div className="mt-3">
+                      <Label className="text-sm">Optional message to the host</Label>
+                      <Input placeholder="eg: Sorry I can't make it — out of town" value={declineMessage} onChange={(e) => setDeclineMessage((e.target as HTMLInputElement).value)} />
+                      <p className="text-xs text-muted-foreground mt-1">This message will be recorded with your response (backend may ignore if not supported).</p>
+                    </div>
                     <p className="text-xs text-muted-foreground text-center">
                       Clicking "Yes, I'm Attending" takes you to your personalised portal to manage travel, stay, and preferences.
                     </p>
@@ -438,12 +611,12 @@ export default function EventMicrosite() {
                   <div className="space-y-2">
                     <Label htmlFor="ref">Booking Reference</Label>
                     <p className="text-xs text-muted-foreground">
-                      Your booking reference was sent to you by the organiser (e.g. GP123456).
+                      Your booking reference was sent to you by the organiser (eg: GP123456).
                     </p>
                     <div className="flex gap-2">
-                      <Input
-                        id="ref"
-                        placeholder="GP123456"
+                        <Input
+                          id="ref"
+                          placeholder="eg: GP123456"
                         value={bookingRef}
                         onChange={(e) => {
                           setBookingRef(e.target.value.toUpperCase());
@@ -465,6 +638,9 @@ export default function EventMicrosite() {
                         )}
                       </Button>
                     </div>
+                    {lookupLoading && (
+                      <p className="text-sm text-muted-foreground">Looking up your booking…</p>
+                    )}
                     {lookupError && (
                       <p className="text-sm text-destructive">{lookupError}</p>
                     )}
@@ -494,20 +670,18 @@ export default function EventMicrosite() {
                     <div className="space-y-3">
                       <div className="space-y-1.5">
                         <Label htmlFor="name">Full Name *</Label>
-                        <Input id="name" placeholder="Your name" value={regName} onChange={(e) => setRegName(e.target.value)} />
+                        <Input id="name" placeholder="eg: John Doe" value={regName} onChange={(e) => setRegName(e.target.value)} />
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="email">Email Address *</Label>
-                        <Input id="email" type="email" placeholder="you@example.com" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} />
+                        <Input id="email" type="email" placeholder="eg: you@example.com" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} />
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="phone">Phone Number</Label>
-                        <Input id="phone" placeholder="+91 98765 43210" value={regPhone} onChange={(e) => setRegPhone(e.target.value)} />
+                        <Input id="phone" placeholder="eg: +91 98765 43210" value={regPhone} onChange={(e) => setRegPhone(e.target.value)} />
                       </div>
-                      {registerMutation.error && (
-                        <p className="text-sm text-destructive">
-                          {(registerMutation.error as Error).message}
-                        </p>
+                      {regError && (
+                        <p className="text-sm text-destructive">{regError}</p>
                       )}
                       <Button
                         className="w-full text-white"

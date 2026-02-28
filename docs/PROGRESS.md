@@ -105,12 +105,14 @@ All planned features implemented. Nomination logic intentionally dropped. See "D
 
 ## Known Issues (Non-blocking)
 
-| Issue                                                                        | Severity | Notes                                                                         |
-| ---------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------- |
-| MemoryStore sessions lost on restart                                         | Low      | Acceptable for demo; swap to `connect-pg-simple` for production               |
-| Pre-existing TS errors in Dashboard.tsx, GuestConcierge.tsx, GuestTravel.tsx | Low      | Not caused by recent work; doesn't affect core demo flows                     |
-| `travelSchedules.eventId` Drizzle error in storage.ts                        | Low      | InMemoryStorage only, not used in production                                  |
-| Agent forgot-password flow                                                   | Low      | UI link added on agent sign-in; reset password backend/API/email flow pending |
+| Issue                                                                        | Severity | Notes                                                                                                                                                          |
+| ---------------------------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MemoryStore sessions lost on restart                                         | Low      | Acceptable for demo; swap to `connect-pg-simple` for production                                                                                                |
+| Pre-existing TS errors in Dashboard.tsx, GuestConcierge.tsx, GuestTravel.tsx | Low      | Not caused by recent work; doesn't affect core demo flows                                                                                                      |
+| `travelSchedules.eventId` Drizzle error in storage.ts                        | Low      | InMemoryStorage only, not used in production                                                                                                                   |
+| Agent forgot-password flow                                                   | Low      | UI link added on agent sign-in; reset password backend/API/email flow pending                                                                                  |
+| Event decline optional message                                               | Low      | Microsite UI supports an optional decline message; backend support pending                                                                                     |
+| Microsite booking + confirmation UI                                          | Low      | UI-only booking cards and confirmation receipt added to microsite; link to guest booking pages when guest token available; backend/payment integration pending |
 
 ---
 

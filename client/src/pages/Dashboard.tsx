@@ -136,14 +136,33 @@ export default function Dashboard() {
       const response = await fetch("/api/user/event-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ eventCode: data.eventCode.trim() }),
       });
 
       if (!response.ok) {
         throw new Error("Invalid event code");
       }
 
+      const result = await response.json();
+
       setIsEventCodeDialogOpen(false);
+
+      if (typeof result?.eventId === "number") {
+        const displayName = result.eventName ?? result.eventCode ?? `#${result.eventId}`;
+        try {
+          toast({ title: `Joined event ${displayName}`, description: `Opening ${displayName}…` });
+        } catch (e) {
+          // swallow if toast fails for any reason
+        }
+
+        // Give the toast a moment to appear before navigating
+        setTimeout(() => {
+          navigate(`/events/${result.eventId}`);
+        }, 700);
+
+        return;
+      }
+
       window.location.reload();
     } catch (error) {
       console.error("Failed to set event code", error);

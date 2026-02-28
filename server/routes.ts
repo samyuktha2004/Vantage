@@ -116,29 +116,35 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Not authenticated" });
       }
 
-      const { eventCode } = req.body;
-      if (!eventCode) {
+      const rawEventCode = req.body?.eventCode;
+      const normalizedEventCode = typeof rawEventCode === "string" ? rawEventCode.trim().toUpperCase() : "";
+      if (!normalizedEventCode) {
         return res.status(400).json({ message: "Event code is required" });
       }
 
       // Verify event code exists
-      const event = await storage.getEventByCode(eventCode);
+      const event = await storage.getEventByCode(normalizedEventCode);
       if (!event) {
         return res.status(404).json({ message: "Invalid event code" });
       }
 
       // Update user with event code (keeps backward compat for single-event views)
-      await storage.updateUserEventCode(user.id, eventCode);
+      await storage.updateUserEventCode(user.id, normalizedEventCode);
 
       // Also link this client to the event via clientId for multi-event support
       await db.update(events)
         .set({ clientId: user.id })
-        .where(eq(events.eventCode, eventCode));
+        .where(eq(events.eventCode, normalizedEventCode));
 
       // Update session
-      req.session.user = { ...user, eventCode };
+      req.session.user = { ...user, eventCode: normalizedEventCode };
 
-      res.json({ success: true });
+      res.json({
+        success: true,
+        eventId: event.id,
+        eventCode: normalizedEventCode,
+        eventName: event.name,
+      });
     } catch (err) {
       console.error("Event code error:", err);
       res.status(500).json({ message: "Internal Server Error" });

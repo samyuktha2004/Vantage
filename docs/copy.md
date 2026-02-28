@@ -17,23 +17,20 @@
   - Decline: "Decline — Notify Host"
 - Confirmation messages:
   - On accept: "You're all set! Let's get started with booking your travel arrangements!", "We'll email a confirmation with details and a link to manage your RSVP."
-  - On decline: "We're sorry you can't make it — we've notified the event team."
+  - On decline: "We're sorry you can't make it — we'll notify the host."
 - Microcopy: "Need to change later? You can update your RSVP with this link."
 
 
 ## Booking confirmation (Flight / Hotel)
 
 - Benefit-focused CTAs:
-  - Flight: "Book flight for your group"
-  - Hotel: "Block rooms for your group"
+  - Flight: "Book flight"
+  - Hotel: "Block rooms"
 - Loading / feedback:
   - "Reserving now — we'll email confirmation shortly."
-- Group-booking note (friendly, clear):
-  - "Why this is a placeholder: we're securing the group rate now so rooms/seats don't sell out. Guests will get secure invites to add personal details and travel documents via the guest portal. We'll email a summary with management links."
 - Post-booking checklist (short bullets shown after success):
   - "What happens next"
     - "Confirmation email sent to you"
-    - "Guest invites dispatched to collect traveler details"
     - "Links to manage or change bookings"
     - "Support contact: support@example.com"
 
@@ -67,27 +64,16 @@
 
 ## Short help snippets for uncommon flows
 
-- Group booking: "Group bookings: we use a placeholder contact to hold the group rate now. Guests will receive secure links to enter personal details later."
-- Hold / prebook: "Hold rate: this reserves the current price for a short time while you finalize details. We'll email the expiry and next steps."
-- Guest lookup: "Find your booking: enter the booking reference from your invitation or confirmation email (eg: ABC123). If you can't find it, contact your event host."
+- Guest lookup: "Find your booking: enter the booking reference from your invitation or confirmation email (eg: ABC123). If you can't find it, contact the agent at: ."
 
 ## Microcopy snippets (copy-and-paste)
 
-- CTA: "Block rooms for your group"
-- CTA: "Book flight for your group"
+- CTA: "Block rooms"
+- CTA: "Book flight"
 - Search toast: "We couldn't complete the search. Please try again in a few moments."
 - Field hint (departure): "Please select a departure date"
 - Placeholder email: "eg: client@example.com"
-- Group note: "We held your booking now. Guests will get invites to add traveler details."
 
-## A/B test variants (quick)
-
-- Primary CTA (Hotel):
-  - A: "Block rooms for your group"
-  - B: "Reserve group rooms — hold price now"
-- Primary CTA (Flight):
-  - A: "Book flight for your group"
-  - B: "Reserve flight seats — hold rate now"
 
 ## Implementation notes
 
