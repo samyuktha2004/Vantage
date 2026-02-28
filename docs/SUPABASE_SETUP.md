@@ -1,155 +1,89 @@
-# vantage - Supabase Setup Guide
+# Supabase Setup (Canonical)
+
+This guide covers only the Supabase + database connectivity details.
+
+## Current architecture
+
+- App uses `DATABASE_URL` for direct Postgres access via `pg` + Drizzle.
+- Schema is managed from `shared/schema.ts`.
+- Apply schema with `npm run db:push` (no required `001_initial_schema.sql` step).
+- `SUPABASE_URL` and `SUPABASE_ANON_KEY` exist in `.env.example` for optional client/storage use, but primary app persistence runs through `DATABASE_URL`.
 
 ## Prerequisites
 
-- Node.js installed
-- A Supabase account (free tier works fine)
+- Node.js 18+
+- Supabase project
 
-## Supabase Setup
+## 1) Create Supabase project
 
-### 1. Create a Supabase Project
+1. Open [https://supabase.com/dashboard](https://supabase.com/dashboard)
+2. Create a project and wait for provisioning.
 
-1. Go to [https://supabase.com](https://supabase.com)
-2. Sign up or log in
-3. Create a new project
-4. Wait for the project to be provisioned (takes ~2 minutes)
+## 2) Get database connection string
 
-### 2. Get Your Supabase Credentials
+1. Supabase → Project Settings → Database
+2. Copy the connection URI
+3. Use the direct Postgres URI format in `.env` as `DATABASE_URL`
 
-1. Go to your project settings
-2. Navigate to **API** section
-3. Copy the following:
-   - **Project URL** (looks like: `https://xxxxxxxxxxxxx.supabase.co`)
-   - **anon/public key** (starts with `eyJ...`)
+Example:
 
-### 3. Run Database Migrations
+```env
+DATABASE_URL=postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres
+```
 
-1. In your Supabase dashboard, go to **SQL Editor**
-2. Click **New query**
-3. Copy and paste the entire contents of `supabase/migrations/001_initial_schema.sql`
-4. Click **Run** to execute the migration
-5. You should see "Success. No rows returned" message
-
-### 4. Configure Environment Variables
-
-1. Create a `.env` file in the root directory of the project:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Edit the `.env` file and add your Supabase credentials:
-
-   ```env
-   SUPABASE_URL=https://xxxxxxxxxxxxx.supabase.co
-   SUPABASE_ANON_KEY=eyJhbGc...your-key-here
-   SESSION_SECRET=your-random-secret-here
-   ```
-
-3. Generate a random session secret:
-   ```bash
-   # On Windows PowerShell:
-   -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object {[char]$_})
-   ```
-
-### 5. Install Dependencies & Start
+## 3) Configure local env
 
 ```bash
-# Install dependencies (if not already done)
-npm install
+cp .env.example .env
+```
 
-# Start the development server
+Set at minimum:
+
+```env
+DATABASE_URL=...
+SESSION_SECRET=...
+```
+
+Generate a session secret:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+## 4) Push schema and run
+
+```bash
+npm install
+npm run db:push
 npm run dev
 ```
 
-## Database Schema Overview
+## 5) Verify
 
-The following tables are created:
-
-- **users** - Stores agent and client accounts
-- **events** - Event information created by agents
-- **client_details** - Client information for each event
-- **hotel_bookings** - Hotel booking details
-- **travel_options** - Travel mode and schedule information
-- **travel_schedules** - Specific flight/train timings
-- **guests** - Guest list for events
-- **labels** - Custom labels for categorization
-- **perks** - Event perks and amenities
-- **requests** - Special requests from guests
-
-## Features Using Supabase
-
-✅ **Authentication**
-
-- Agent and client sign up/sign in
-- Password hashing with bcrypt
-- Session-based authentication
-
-✅ **Event Management**
-
-- Create events with unique event codes
-- Publish/unpublish events
-- Event code verification for clients
-
-✅ **Data Persistence**
-
-- All event data stored in Supabase PostgreSQL
-- Client details, hotel bookings, travel options
-- Guest lists with categories (VIP, Friends, Family)
-
-✅ **Real-time Capabilities** (Future Enhancement)
-
-- Supabase supports real-time subscriptions
-- Can add live updates for event changes
+1. Sign up as Agent in local app.
+2. Create an event.
+3. Check Supabase Table Editor for inserted rows.
 
 ## Troubleshooting
 
-### "Invalid API key" Error
+### Drizzle push fails
 
-- Double-check your `SUPABASE_ANON_KEY` in `.env`
-- Make sure there are no extra spaces
-- Verify the key is the **anon public** key, not the service role key
+- Check `DATABASE_URL` format and password.
+- Confirm your Supabase project is active (not paused).
+- Retry with stable network; some SSL/proxy setups need a reconnect.
 
-### "relation does not exist" Error
+### App runs but no data persists
 
-- The database migration was not run
-- Go to Supabase SQL Editor and run the migration script
+- Ensure server started with correct `.env` file.
+- Validate writes in Supabase Table Editor.
+- Check server logs for query errors.
 
-### Cannot Connect to Supabase
+### Port conflict on macOS
 
-- Check your `SUPABASE_URL` is correct
-- Ensure your project is not paused (Supabase pauses inactive projects)
-- Verify your internet connection
+- If `5000` is occupied (AirPlay), set `PORT=5001` in `.env`.
 
-### Data Not Persisting
+## Related docs
 
-- Check Supabase Table Editor to see if data is being inserted
-- Look at the browser console for errors
-- Check the server logs for any database errors
-
-## Migration from In-Memory Storage
-
-The application now uses Supabase instead of in-memory storage. Key differences:
-
-| Feature          | In-Memory       | Supabase     |
-| ---------------- | --------------- | ------------ |
-| Data persistence | Lost on restart | Permanent    |
-| Multi-user       | Limited         | Full support |
-| Scalability      | Single instance | Cloud-scale  |
-| Real-time        | Not available   | Available    |
-| Backup           | None            | Automatic    |
-
-## Next Steps
-
-- [ ] Set up Row Level Security policies for production
-- [ ] Add real-time subscriptions for live updates
-- [ ] Implement file uploads for profile images using Supabase Storage
-- [ ] Add email notifications using Supabase Edge Functions
-- [ ] Set up database backups
-
-## Support
-
-For Supabase-specific issues, refer to:
-
-- [Supabase Documentation](https://supabase.com/docs)
-- [Supabase Discord](https://discord.supabase.com)
+- Fast setup: [QUICKSTART.md](./QUICKSTART.md)
+- TBO setup: [TBO_API_SETUP.md](./TBO_API_SETUP.md)
+- Full integration reference: [API_INTEGRATION.md](./API_INTEGRATION.md)

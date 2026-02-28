@@ -32,6 +32,8 @@ export default function GuestRSVP({ token }: { token: string }) {
   const updateProfile = useUpdateProfile(token);
   const [, navigate] = useLocation();
 
+  // Smart Check: guest must verify their name/event before RSVP form shows
+  const [smartCheckDone, setSmartCheckDone] = useState(false);
   const [status, setStatus] = useState<'confirmed' | 'declined' | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
@@ -121,6 +123,62 @@ export default function GuestRSVP({ token }: { token: string }) {
     );
   }
 
+  // Smart Check: show verification card before RSVP form
+  if (!smartCheckDone) {
+    return (
+      <GuestLayout step={1} token={token}>
+        <div className="max-w-lg mx-auto space-y-6 py-4">
+          <div className="text-center">
+            <Badge variant="outline" className="mb-3 border-primary/30 text-primary">Smart Check</Badge>
+            <h1 className="text-3xl font-serif text-primary mb-2">Before you RSVP…</h1>
+            <p className="text-muted-foreground text-sm">Please verify the details below are correct. This ensures your booking goes through without any issues.</p>
+          </div>
+          <Card className="border-primary/20">
+            <CardContent className="pt-5 pb-4 space-y-3">
+              <div className="flex items-center justify-between border-b pb-3">
+                <span className="text-sm text-muted-foreground">Your name</span>
+                <span className="font-semibold">{guestData.name}</span>
+              </div>
+              <div className="flex items-center justify-between border-b pb-3">
+                <span className="text-sm text-muted-foreground">Event</span>
+                <span className="font-semibold text-right max-w-[60%]">{guestData.event.name}</span>
+              </div>
+              <div className="flex items-center justify-between border-b pb-3">
+                <span className="text-sm text-muted-foreground">Date</span>
+                <span className="font-semibold">
+                  {new Date(guestData.event.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </span>
+              </div>
+              {guestData.event.location && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Location</span>
+                  <span className="font-semibold text-right max-w-[60%]">{guestData.event.location}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => setSmartCheckDone(true)}
+              className="w-full py-3 rounded-xl bg-primary text-white font-semibold hover:bg-primary/90 transition-colors"
+            >
+              ✓ Details look correct — continue to RSVP
+            </button>
+            <button
+              onClick={() => window.location.href = `mailto:support@vantage.travel?subject=Booking correction for ${guestData.name}&body=Hi, my booking details need updating.`}
+              className="w-full py-2.5 rounded-xl border border-border text-muted-foreground text-sm hover:bg-muted transition-colors"
+            >
+              Something's wrong — contact agent
+            </button>
+          </div>
+          <p className="text-center text-xs text-muted-foreground">
+            If you don't respond, your spot may be released.
+          </p>
+        </div>
+      </GuestLayout>
+    );
+  }
+
   return (
     <GuestLayout step={1} token={token}>
       <div className="max-w-3xl mx-auto space-y-8">
@@ -129,14 +187,14 @@ export default function GuestRSVP({ token }: { token: string }) {
           <Badge variant="outline" className="mb-4 border-primary/30 text-primary">
             Personal Invitation
           </Badge>
-          <h1 className="text-4xl font-serif text-primary mb-3">You're Invited!</h1>
+          <h1 className="text-4xl font-serif text-primary mb-3">You're Invited — Join Us</h1>
           <p className="text-xl text-muted-foreground">{guestData.event.name}</p>
           <p className="text-sm text-muted-foreground mt-2">
-            {new Date(guestData.event.date).toLocaleDateString('en-US', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
+            {new Date(guestData.event.date).toLocaleDateString('en-US', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
             })}
           </p>
         </div>
@@ -169,7 +227,7 @@ export default function GuestRSVP({ token }: { token: string }) {
             >
               <div className="flex flex-col items-center gap-2">
                 <CheckCircle2 className="w-6 h-6" />
-                <span className="text-lg font-semibold">Yes, I'll be there!</span>
+                <span className="text-lg font-semibold">Confirm Attendance</span>
               </div>
             </Button>
             <Button
@@ -180,7 +238,7 @@ export default function GuestRSVP({ token }: { token: string }) {
             >
               <div className="flex flex-col items-center gap-2">
                 <XCircle className="w-6 h-6" />
-                <span className="text-lg font-semibold">Can't make it</span>
+                <span className="text-lg font-semibold">Decline — Notify Host</span>
               </div>
             </Button>
           </CardContent>

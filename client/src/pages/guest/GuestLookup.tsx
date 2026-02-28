@@ -22,9 +22,9 @@ export default function GuestLookup() {
     }
   };
 
-  // Redirect on success
+  // Redirect on success — go to GuestDashboard which handles pending→RSVP redirect automatically
   if (guest) {
-    setLocation(`/guest/travel?ref=${guest.bookingRef}`);
+    setLocation(`/guest/${guest.accessToken}`);
   }
 
   return (
@@ -32,14 +32,14 @@ export default function GuestLookup() {
       <div className="bg-white rounded-3xl p-8 md:p-12 shadow-xl border border-border/50 text-center max-w-lg mx-auto">
         <h2 className="text-3xl font-serif text-primary mb-4">Welcome</h2>
         <p className="text-muted-foreground mb-8">
-          Please enter your unique booking reference code found in your invitation email to access your itinerary and concierge.
+          Please enter your booking reference from your invitation to access your itinerary and concierge.
         </p>
 
         <form onSubmit={handleSearch} className="space-y-6">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
             <Input 
-              placeholder="e.g. BOOK-1234" 
+              placeholder="eg: BOOK-1234" 
               className="pl-12 h-14 text-lg bg-muted/20 border-border/60 focus:bg-white transition-all text-center uppercase tracking-widest font-mono"
               value={refInput}
               onChange={(e) => setRefInput(e.target.value.toUpperCase())}

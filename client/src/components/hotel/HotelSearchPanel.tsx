@@ -3,11 +3,12 @@
  * Flow: Country/City → Search → Select Hotel → Select Room → Confirm Booking
  */
 import { useState } from "react";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, ChevronDown, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
 import {
   useTBOCountries,
@@ -18,6 +19,35 @@ import {
 import { HotelResultsList, type HotelResult, type RoomOption } from "./HotelResultsList";
 import { HotelRoomSelector } from "./HotelRoomSelector";
 import { HotelBookingConfirmCard } from "./HotelBookingConfirmCard";
+
+// Fallback countries shown when TBO country API is unavailable
+const FALLBACK_COUNTRIES = [
+  { Code: "IN", Name: "India" },
+  { Code: "AE", Name: "United Arab Emirates" },
+  { Code: "GB", Name: "United Kingdom" },
+  { Code: "US", Name: "United States" },
+  { Code: "SG", Name: "Singapore" },
+  { Code: "TH", Name: "Thailand" },
+  { Code: "FR", Name: "France" },
+  { Code: "DE", Name: "Germany" },
+  { Code: "AU", Name: "Australia" },
+  { Code: "JP", Name: "Japan" },
+  { Code: "QA", Name: "Qatar" },
+  { Code: "SA", Name: "Saudi Arabia" },
+  { Code: "MV", Name: "Maldives" },
+  { Code: "LK", Name: "Sri Lanka" },
+  { Code: "NP", Name: "Nepal" },
+  { Code: "BH", Name: "Bahrain" },
+  { Code: "OM", Name: "Oman" },
+  { Code: "MY", Name: "Malaysia" },
+  { Code: "ID", Name: "Indonesia" },
+  { Code: "ZA", Name: "South Africa" },
+  { Code: "KE", Name: "Kenya" },
+  { Code: "IT", Name: "Italy" },
+  { Code: "ES", Name: "Spain" },
+  { Code: "NL", Name: "Netherlands" },
+  { Code: "CH", Name: "Switzerland" },
+];
 
 type Phase = "search" | "results" | "rooms" | "confirm";
 
@@ -54,15 +84,39 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
     nationality: "IN",
   });
   const [selectedCountry, setSelectedCountry] = useState("");
+  const [countryOpen, setCountryOpen] = useState(false);
+  const [cityOpen, setCityOpen] = useState(false);
   const [hotelResults, setHotelResults] = useState<HotelResult[]>([]);
   const [selectedHotel, setSelectedHotel] = useState<HotelResult | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<RoomOption | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
 
-  const { data: countries, isLoading: countriesLoading } = useTBOCountries();
-  const { data: cities, isLoading: citiesLoading } = useTBOCities(selectedCountry);
+  const {
+    data: countries,
+    isLoading: countriesLoading,
+    error: countriesError,
+  } = useTBOCountries();
+  const {
+    data: cities,
+    isLoading: citiesLoading,
+    error: citiesError,
+  } = useTBOCities(selectedCountry);
   const hotelSearch = useTBOHotelSearch();
   const preBook = useTBOPrebook();
+
+  // Merge TBO countries with fallback — if API returns data, prefer it; else show fallback
+  const countryList: { Code: string; Name: string }[] = (() => {
+    const apiList = (countries ?? [])
+      .map((c: any) => ({ Code: c?.Code ?? c?.code ?? "", Name: c?.Name ?? c?.name ?? "" }))
+      .filter((c: { Code: string; Name: string }) => c.Code && c.Name);
+    return apiList.length > 0 ? apiList : FALLBACK_COUNTRIES;
+  })();
+
+  const cityList: { Code: string; Name: string }[] = (cities ?? [])
+    .map((c: any) => ({ Code: c?.Code ?? c?.code ?? "", Name: c?.Name ?? c?.name ?? "" }))
+    .filter((c: { Code: string; Name: string }) => c.Code && c.Name);
+
+  const useCityTextInput = !citiesLoading && selectedCountry && (!!citiesError || cityList.length === 0);
 
   const handleSearch = async () => {
     if (!searchParams.cityCode || !searchParams.checkIn || !searchParams.checkOut) {
@@ -151,7 +205,6 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
         throw new Error(err.message ?? "Failed to save hotel booking");
       }
 
-      const saved = await res.json();
       toast({ title: "Hotel blocked!", description: `${selectedHotel.HotelName} — ${searchParams.numberOfRooms} rooms reserved.` });
       onBooked({
         hotelName: selectedHotel.HotelName,
@@ -172,46 +225,110 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
     return (
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
+
+          {/* ── Country combobox ── */}
           <div className="space-y-1.5">
             <Label>Country</Label>
-            <Select
-              value={selectedCountry}
-              onValueChange={(v) => {
-                setSelectedCountry(v);
-                setSearchParams((p) => ({ ...p, countryCode: v, cityCode: "" }));
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={countriesLoading ? "Loading…" : "Select country"} />
-              </SelectTrigger>
-              <SelectContent>
-                {(countries ?? []).map((c: any) => (
-                  <SelectItem key={c.Code} value={c.Code}>
-                    {c.Name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover open={countryOpen} onOpenChange={setCountryOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  className="w-full justify-between font-normal"
+                >
+                  <span className="truncate">
+                    {selectedCountry
+                      ? (countryList.find(c => c.Code === selectedCountry)?.Name ?? selectedCountry)
+                      : countriesLoading ? "Loading…" : "Select country"}
+                  </span>
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Search country…" />
+                  <CommandList>
+                    <CommandEmpty>No country found.</CommandEmpty>
+                    <CommandGroup>
+                      {countryList.map(c => (
+                        <CommandItem
+                          key={c.Code}
+                          value={`${c.Name} ${c.Code}`}
+                          onSelect={() => {
+                            setSelectedCountry(c.Code);
+                            setSearchParams(p => ({ ...p, countryCode: c.Code, cityCode: "" }));
+                            setCountryOpen(false);
+                          }}
+                        >
+                          <Check className={`mr-2 h-4 w-4 ${selectedCountry === c.Code ? "opacity-100" : "opacity-0"}`} />
+                          {c.Name}
+                          <span className="ml-auto text-xs text-muted-foreground">{c.Code}</span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            {countriesError && (
+              <p className="text-xs text-amber-600 mt-1">TBO unavailable — showing common countries.</p>
+            )}
           </div>
 
+          {/* ── City combobox or text fallback ── */}
           <div className="space-y-1.5">
             <Label>City</Label>
-            <Select
-              value={searchParams.cityCode}
-              disabled={!selectedCountry}
-              onValueChange={(v) => setSearchParams((p) => ({ ...p, cityCode: v }))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={citiesLoading ? "Loading…" : selectedCountry ? "Select city" : "Select country first"} />
-              </SelectTrigger>
-              <SelectContent>
-                {(cities ?? []).map((c: any) => (
-                  <SelectItem key={c.Code} value={c.Code}>
-                    {c.Name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {useCityTextInput ? (
+              <>
+                <Input
+                  placeholder="Enter TBO city code"
+                  value={searchParams.cityCode}
+                  onChange={e => setSearchParams(p => ({ ...p, cityCode: e.target.value }))}
+                />
+                <p className="text-xs text-amber-600">City list unavailable — enter the TBO city code directly.</p>
+              </>
+            ) : (
+              <Popover open={cityOpen} onOpenChange={setCityOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    className="w-full justify-between font-normal"
+                    disabled={!selectedCountry}
+                  >
+                    <span className="truncate">
+                      {searchParams.cityCode
+                        ? (cityList.find(c => c.Code === searchParams.cityCode)?.Name ?? searchParams.cityCode)
+                        : citiesLoading ? "Loading…" : selectedCountry ? "Select city" : "Select country first"}
+                    </span>
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search city…" />
+                    <CommandList>
+                      <CommandEmpty>No city found.</CommandEmpty>
+                      <CommandGroup>
+                        {cityList.map(c => (
+                          <CommandItem
+                            key={c.Code}
+                            value={`${c.Name} ${c.Code}`}
+                            onSelect={() => {
+                              setSearchParams(p => ({ ...p, cityCode: c.Code }));
+                              setCityOpen(false);
+                            }}
+                          >
+                            <Check className={`mr-2 h-4 w-4 ${searchParams.cityCode === c.Code ? "opacity-100" : "opacity-0"}`} />
+                            {c.Name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            )}
           </div>
 
           <div className="space-y-1.5">

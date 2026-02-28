@@ -59,7 +59,7 @@ export default function ClientSignUp() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <Navigation />
+      <Navigation showBack={false} showHome={true} />
       <div className="flex-1 flex items-center justify-center px-6">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -155,12 +155,6 @@ export default function ClientSignUp() {
               </div>
             </form>
           </Form>
-        </div>
-
-        <div className="text-center mt-6">
-          <a href="/" className="text-sm text-muted-foreground hover:text-primary">
-            ← Back to Home
-          </a>
         </div>
       </motion.div>
       </div>

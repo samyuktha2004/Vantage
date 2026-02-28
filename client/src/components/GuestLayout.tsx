@@ -20,7 +20,7 @@ export function GuestLayout({ children, step, token }: GuestLayoutProps) {
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans selection:bg-accent/30">
-      <Navigation />
+      <Navigation showBack={false} showHome={true} />
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-md sticky top-[52px] z-50 border-b border-border/40">
         <div className="max-w-5xl mx-auto px-4 h-20 flex items-center justify-between">

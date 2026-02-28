@@ -126,10 +126,12 @@ export function exportManifestToExcel(guests: any[], eventName: string = 'Event'
     local: "Local / In City",
   };
 
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
   const rows = guests.map((g, i) => ({
     "#": i + 1,
     "Name": g.name ?? "",
     "Booking Ref": g.bookingRef ?? "",
+    "Guest Portal Link": g.accessToken ? `${origin}/guest/${g.accessToken}` : "",
     "Label / Tier": g.label ?? "",
     "Status": g.status ?? "",
     "Seats": g.confirmedSeats ?? 1,
@@ -149,8 +151,8 @@ export function exportManifestToExcel(guests: any[], eventName: string = 'Event'
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(rows);
 
-  // Style header row width
-  const colWidths = [4, 24, 14, 14, 12, 6, 18, 12, 14, 14, 16, 16, 16, 20, 16, 10, 30];
+  // Style header row width (added portal link column at position 3)
+  const colWidths = [4, 24, 14, 44, 14, 12, 6, 18, 12, 14, 14, 16, 16, 16, 20, 16, 10, 30];
   ws['!cols'] = colWidths.map(w => ({ wch: w }));
 
   // Mark walk-ins with a note (XLSX doesn't support cell colors easily without enterprise lib)

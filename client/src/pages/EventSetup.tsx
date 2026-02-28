@@ -75,6 +75,7 @@ export default function EventSetup() {
   const [manualDate, setManualDate] = useState("");
   const [manualReturn, setManualReturn] = useState("");
   const [isSavingManual, setIsSavingManual] = useState(false);
+  const [isDataLoading, setIsDataLoading] = useState(true);
 
   const clientForm = useForm<ClientDetailsFormValues>({
     resolver: zodResolver(clientDetailsSchema),
@@ -103,18 +104,60 @@ export default function EventSetup() {
   }, [id]);
 
   const fetchEventData = async () => {
+    setIsDataLoading(true);
     try {
-      const response = await fetch(`/api/events/${id}`);
-      if (response.ok) {
-        const data = await response.json();
+      const [eventRes, travelRes, hotelRes, clientRes] = await Promise.all([
+        fetch(`/api/events/${id}`, { credentials: "include" }),
+        fetch(`/api/events/${id}/travel-options`, { credentials: "include" }),
+        fetch(`/api/events/${id}/hotel-bookings`, { credentials: "include" }),
+        fetch(`/api/events/${id}/client-details`, { credentials: "include" }),
+      ]);
+
+      if (eventRes.ok) {
+        const data = await eventRes.json();
         setEventData(data);
-        // Hydrate invite fields from existing event data
         if (data.coverMediaUrl) setInviteUrl(data.coverMediaUrl);
         if (data.scheduleText) setScheduleText(data.scheduleText);
         if (data.inviteMessage) setInviteMessage(data.inviteMessage);
       }
+
+      if (travelRes.ok) {
+        const options = await travelRes.json();
+        if (Array.isArray(options) && options.length > 0) {
+          setBookedTransports(options.map((opt: any) => ({
+            id: String(opt.id),
+            mode: opt.travelMode ?? "flight",
+            from: opt.fromLocation ?? "",
+            to: opt.toLocation ?? "",
+            date: opt.departureDate ? new Date(opt.departureDate).toLocaleDateString() : "",
+            source: opt.tboFlightData ? "tbo" : "manual",
+          })));
+        }
+      }
+
+      if (hotelRes.ok) {
+        const bookings = await hotelRes.json();
+        if (Array.isArray(bookings) && bookings.length > 0) {
+          setHotelBooked(true);
+        }
+      }
+
+      // Prefill client details form when editing an existing event
+      if (clientRes.ok) {
+        const cd = await clientRes.json();
+        clientForm.reset({
+          clientName: cd.clientName ?? "",
+          address: cd.address ?? "",
+          phone: cd.phone ?? "",
+          hasVipGuests: cd.hasVipGuests ?? false,
+          hasFriends: cd.hasFriends ?? false,
+          hasFamily: cd.hasFamily ?? false,
+        });
+      }
     } catch (error) {
       console.error("Failed to fetch event data", error);
+    } finally {
+      setIsDataLoading(false);
     }
   };
 
@@ -188,6 +231,7 @@ export default function EventSetup() {
       const response = await fetch(`/api/events/${id}/hotel-booking`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(payload),
       });
 
@@ -229,14 +273,23 @@ export default function EventSetup() {
     }
     setIsSavingManual(true);
     try {
+      const depDate = new Date(manualDate + "T00:00:00");
+      if (isNaN(depDate.getTime())) {
+        toast({ title: "Invalid departure date", variant: "destructive" });
+        setIsSavingManual(false);
+        return;
+      }
       const payload: any = {
         eventId: Number(id),
         travelMode: manualMode,
         fromLocation: manualFrom,
         toLocation: manualTo,
-        departureDate: new Date(manualDate).toISOString(),
+        departureDate: depDate.toISOString(),
       };
-      if (manualReturn) payload.returnDate = new Date(manualReturn).toISOString();
+      if (manualReturn) {
+        const retDate = new Date(manualReturn + "T00:00:00");
+        if (!isNaN(retDate.getTime())) payload.returnDate = retDate.toISOString();
+      }
 
       const res = await fetch(`/api/events/${id}/travel-options`, {
         method: "POST",
@@ -287,6 +340,16 @@ export default function EventSetup() {
     </div>
   );
 
+  if (isDataLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex h-64 items-center justify-center">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="max-w-3xl mx-auto">
@@ -299,7 +362,7 @@ export default function EventSetup() {
             <ArrowLeft className="w-4 h-4 mr-2" /> Back
           </Button>
           <h1 className="text-3xl font-serif text-primary mb-2">
-            Event Setup: {eventData?.name}
+            {eventData?.name ? `Event Setup: ${eventData.name}` : "Event Setup"}
           </h1>
           <p className="text-muted-foreground">
             Complete the client details, hotel, and travel information

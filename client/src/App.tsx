@@ -45,6 +45,24 @@ import EventMicrosite from "@/pages/EventMicrosite";
 import CheckInDashboard from "@/pages/groundteam/CheckInDashboard";
 import RoomingList from "@/pages/groundteam/RoomingList";
 
+function HomeRoute() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (user) {
+    return <Redirect to="/dashboard" />;
+  }
+
+  return <Landing />;
+}
+
 function ProtectedRoute({ component: Component, ...rest }: any) {
   const { user, isLoading } = useAuth();
 
@@ -67,7 +85,7 @@ function Router() {
   return (
     <Switch>
       {/* Public Routes */}
-      <Route path="/" component={Landing} />
+      <Route path="/" component={HomeRoute} />
       
       {/* Auth Routes */}
       <Route path="/auth/agent/signin" component={AgentSignIn} />

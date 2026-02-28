@@ -1,66 +1,44 @@
 import { useLocation } from "wouter";
-import { useGuestPortal } from "@/hooks/use-guest-portal";
+import { useGuestPortal, useSubmitGuestRequest } from "@/hooks/use-guest-portal";
 import { GuestLayout } from "@/components/GuestLayout";
-import { Loader2, Check, Star, Mail, Phone, ArrowRight } from "lucide-react";
+import { Loader2, Star, Mail, Phone, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useLabelPerks } from "@/hooks/use-labels";
-import { useCreateRequest } from "@/hooks/use-requests";
 import { toast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 
 export default function GuestConcierge({ token }: { token: string }) {
   const { data: guestData, isLoading } = useGuestPortal(token);
-  const createRequest = useCreateRequest();
+  const submitRequest = useSubmitGuestRequest(token);
   const [, navigate] = useLocation();
 
-  // In a real app, we'd fetch perks filtered by the label. 
-  // For this demo, let's assume we fetch `availablePerks` which comes from a specialized endpoint or hook
-  // But standard hook architecture is to list perks then filter.
-  // The guestLookup endpoint is defined to return `label` which we can use.
-  
-  // To keep it simple and robust, we will mock the "available perks" display based on the schema structure 
-  // since the full relational query might be complex to wire in one go without a specific "guest-perks" endpoint.
-  // In a real scenario, `useGuestLookup` would return `availablePerks` inside the object as per schema comment.
-  
   if (isLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin text-primary" /></div>;
   if (!guestData) return <div className="p-10 text-center">Invalid access link</div>;
 
   const { label } = guestData;
 
-  // Mock perks for visual demonstration since we aren't seeding specific perks in this generator
-  const availablePerks = [
-    { id: 1, name: "Airport Transfer", description: "Private luxury sedan pickup from CDG.", type: "transport", isIncluded: true },
-    { id: 2, name: "Spa Treatment", description: "60-minute massage at the hotel spa.", type: "activity", isIncluded: false },
-    { id: 3, name: "Room Upgrade", description: "Upgrade to Ocean View Suite.", type: "accommodation", isIncluded: false },
-    { id: 4, name: "Welcome Dinner", description: "RSVP for the pre-event gala.", type: "meal", isIncluded: true },
-  ];
+  // Use real perks from the portal — includes only perks enabled for the guest's label
+  const availablePerks = (guestData.availablePerks ?? [])
+    .filter((p: any) => p.isEnabled !== false)
+    .map((p: any) => ({
+      ...p,
+      isIncluded: p.pricingType === "included" || p.expenseHandledByClient === true,
+    }));
 
   const handleRequest = async (perk: any) => {
     try {
-      if (!perk.isIncluded) {
-        // Just open mail/phone for now
-        window.location.href = "mailto:agent@vantage.com";
-        return;
-      }
-
-      await createRequest.mutateAsync({
+      await submitRequest.mutateAsync({
         type: 'perk_request',
-        guestId: guestData.id,
+        addonType: perk.name,
         perkId: perk.id,
-        status: 'pending'
+        budgetConsumed: perk.unitCost ?? 0,
       });
-      
       toast({
         title: "Request Sent",
         description: `We've received your request for ${perk.name}.`,
       });
     } catch (e) {
-      toast({
-        title: "Error",
-        description: "Could not send request.",
-        variant: "destructive"
-      });
+      toast({ title: "Error", description: "Could not send request.", variant: "destructive" });
     }
   };
 
@@ -77,8 +55,15 @@ export default function GuestConcierge({ token }: { token: string }) {
           </p>
         </div>
 
+        {availablePerks.length === 0 && (
+          <div className="text-center py-10 text-muted-foreground border-2 border-dashed rounded-2xl">
+            <Star className="w-8 h-8 mx-auto mb-2 opacity-20" />
+            <p className="text-sm">No concierge services are configured for your tier yet.</p>
+            <p className="text-xs mt-1">Contact your event host for assistance.</p>
+          </div>
+        )}
         <div className="grid md:grid-cols-2 gap-6">
-          {availablePerks.map((perk, idx) => (
+          {(availablePerks as any[]).map((perk: any, idx: number) => (
             <motion.div 
               key={perk.id}
               initial={{ opacity: 0, y: 20 }}
@@ -103,23 +88,14 @@ export default function GuestConcierge({ token }: { token: string }) {
               <h3 className="text-lg font-bold text-primary mb-2">{perk.name}</h3>
               <p className="text-sm text-muted-foreground mb-6 min-h-[40px]">{perk.description}</p>
 
-              {perk.isIncluded ? (
-                <Button 
-                  className="w-full bg-primary text-white hover:bg-primary/90"
-                  onClick={() => handleRequest(perk)}
-                  disabled={createRequest.isPending}
-                >
-                  {createRequest.isPending ? "Confirming..." : "Confirm Selection"}
-                </Button>
-              ) : (
-                <Button 
-                  variant="outline" 
-                  className="w-full border-primary/20 text-primary hover:bg-secondary/20"
-                  onClick={() => handleRequest(perk)}
-                >
-                  Contact Agent
-                </Button>
-              )}
+              <Button
+                className={`w-full ${perk.isIncluded ? "bg-primary text-white hover:bg-primary/90" : ""}`}
+                variant={perk.isIncluded ? "default" : "outline"}
+                onClick={() => handleRequest(perk)}
+                disabled={submitRequest.isPending}
+              >
+                {submitRequest.isPending ? "Confirming..." : perk.isIncluded ? "Confirm Selection" : "Request Add-on"}
+              </Button>
             </motion.div>
           ))}
         </div>

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Loader2, ShieldCheck } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 
 const signInSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -26,6 +27,7 @@ export default function GroundTeamSignIn() {
   const [, navigate] = useLocation();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const { user } = useAuth();
 
   const form = useForm<SignInFormValues>({
     resolver: zodResolver(signInSchema),
@@ -140,7 +142,7 @@ export default function GroundTeamSignIn() {
         </div>
 
         <div className="text-center">
-          <a href="/" className="text-sm text-muted-foreground hover:text-primary">
+          <a href={user ? "/dashboard" : "/"} className="text-sm text-muted-foreground hover:text-primary">
             ← Back to Home
           </a>
         </div>

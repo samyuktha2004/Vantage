@@ -43,6 +43,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { format, differenceInCalendarDays } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 // ── Theming ──────────────────────────────────────────────────────────────────
 
@@ -118,9 +119,11 @@ export default function EventMicrosite() {
   });
 
   // Simple telemetry/reporting helper: send raw error to console (telemetry)
+  const { toast } = useToast();
   const reportError = (err: any, setFriendly?: (s: string) => void, friendlyMsg?: string) => {
     try {
       console.error("telemetry:microsite_error", err);
+      toast({ title: friendlyMsg || "Something went wrong", description: String(err?.message ?? err), variant: 'destructive' });
     } catch (e) {
       // ignore
     }
@@ -195,6 +198,40 @@ export default function EventMicrosite() {
     registerMutation.mutate({ name: regName, email: regEmail, phone: regPhone });
   };
 
+  // Proceed handler — shared by desktop CTA and mobile persistent CTA
+  const handleProceed = async () => {
+    if (!selectedRoom) return setBookingError('Please select a room before continuing.');
+    setBookingError('');
+    const price = Number(selectedRoom.price ?? 0);
+    try {
+      setBookingLoading(true);
+      if (price > 0) {
+        // Payment required — show simulated receipt
+        setReceipt({ id: `RCPT-${Date.now()}`, room: selectedRoom, total: price * hotelNights, nights: hotelNights });
+        setShowConfirmation(true);
+      } else {
+        // No payment required — create a server-side draft booking
+        const body = { roomId: selectedRoom.id, roomName: selectedRoom.name, price, nights: hotelNights };
+        const res = await fetch(`/api/microsite/${event.eventCode}/draft-booking`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ message: 'Draft failed' }));
+          throw new Error(err.message ?? 'Draft failed');
+        }
+        const data = await res.json();
+        setReceipt({ id: data.draftRef ?? `DRFT-${Date.now()}`, room: selectedRoom, total: price * hotelNights, nights: hotelNights });
+        setShowConfirmation(true);
+      }
+    } catch (err) {
+      reportError(err, setBookingError, 'Unable to proceed. Please try again.');
+    } finally {
+      setBookingLoading(false);
+    }
+  };
+
   // ── Loading / Error states ──
   if (isLoading) {
     return (
@@ -215,7 +252,7 @@ export default function EventMicrosite() {
         <p className="text-muted-foreground">
           The event code <strong>{eventCode}</strong> does not exist or is not yet published.
         </p>
-        <p className="text-sm text-muted-foreground">Contact your travel agent or event organiser for the correct link.</p>
+        <p className="text-sm text-muted-foreground">Contact your travel agent or the host for the correct link.</p>
       </div>
     );
   }
@@ -288,11 +325,11 @@ export default function EventMicrosite() {
           />
         ) : null}
 
-        <div className="relative z-10 max-w-3xl mx-auto text-center py-20 px-4">
+        <div className="relative z-10 max-w-3xl mx-auto text-center py-14 sm:py-20 px-4">
           <p className="text-white/70 text-xs font-semibold uppercase tracking-widest mb-3">
-            You are invited
+            You're Invited — Join Us
           </p>
-          <h1 className="text-4xl md:text-6xl font-sans font-bold mb-5 drop-shadow-md">
+          <h1 className="text-3xl sm:text-5xl md:text-6xl font-sans font-bold mb-5 drop-shadow-md">
             {event.name}
           </h1>
           <div className="flex flex-wrap items-center justify-center gap-5 text-white/80 text-sm mb-4">
@@ -324,14 +361,14 @@ export default function EventMicrosite() {
             <Dialog>
               <DialogTrigger asChild>
                 <Button className="px-6 py-3 bg-white text-primary font-semibold shadow-md hover:shadow-lg">
-                  RSVP Now
+                  Confirm Attendance — Reserve Your Spot
                 </Button>
               </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
+                <DialogContent className="w-[95vw] max-w-lg max-h-[85vh] overflow-y-auto">
+                  <DialogHeader>
                   <DialogTitle>RSVP for {event.name}</DialogTitle>
                   <DialogDescription>
-                    Please provide your details to reserve your place. We will send a confirmation to the email provided.
+                    Please provide your details to reserve your place. We'll email a confirmation with details and a link to manage your RSVP.
                   </DialogDescription>
                 </DialogHeader>
 
@@ -352,15 +389,15 @@ export default function EventMicrosite() {
                       </div>
                       <div className="flex justify-end mt-2">
                         <Button className="bg-primary text-white" onClick={handleRegister}>
-                          Confirm RSVP
+                          Confirm Attendance — Reserve Your Spot
                         </Button>
                       </div>
                     </>
                   ) : (
                     <div className="text-center py-6">
                       <CheckCircle2 className="w-12 h-12 mx-auto text-green-500" />
-                      <p className="font-semibold mt-3">You're confirmed</p>
-                      <p className="text-sm text-muted-foreground mt-1">A confirmation has been sent to {regEmail || 'your email'}.</p>
+                      <p className="font-semibold mt-3">You're all set</p>
+                      <p className="text-sm text-muted-foreground mt-1">We'll email a confirmation with details and a link to manage your RSVP.</p>
                     </div>
                   )}
                 </div>
@@ -371,7 +408,7 @@ export default function EventMicrosite() {
       </div>
 
       {/* ── Main content ── */}
-      <div className="max-w-3xl mx-auto px-4 py-10 space-y-10">
+      <div className={`max-w-3xl mx-auto px-4 py-10 ${event.hotel ? "pb-28 sm:pb-10" : ""} space-y-10`}>
 
         {/* Package Overview */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -467,20 +504,37 @@ export default function EventMicrosite() {
         {event.hotel && (
           <section>
             <h2 className="text-xl font-sans font-semibold mb-4">Booking</h2>
-            <p className="text-sm text-muted-foreground mb-4">Select a room to view the estimated price summary and continue to payment.</p>
+            <p className="text-sm text-muted-foreground mb-4">Select a room to view the price summary and continue.</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {rooms.map((r) => (
-                <Card key={r.id} className={`border ${selectedRoom?.id === r.id ? 'ring-2 ring-offset-2' : ''}`}>
-                  <CardContent className="flex items-center justify-between">
-                    <div>
+                <Card
+                  key={r.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selectedRoom?.id === r.id}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelectedRoom(r);
+                    }
+                  }}
+                  className={`border ${selectedRoom?.id === r.id ? 'ring-2 ring-offset-2' : ''} focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2`}
+                >
+                  <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="min-w-0">
                       <p className="font-medium">{r.name}</p>
                       <p className="text-sm text-muted-foreground mt-1">{hotelNights} night{hotelNights > 1 ? 's' : ''} · {event.hotel.name}</p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-left sm:text-right">
                       <div className="font-bold text-lg">₹{(r.price * hotelNights).toLocaleString('en-IN')}</div>
-                      <div className="mt-2 flex gap-2 justify-end">
-                        <Button size="sm" variant={selectedRoom?.id === r.id ? 'secondary' : 'outline'} onClick={() => setSelectedRoom(r)}>
+                      <div className="mt-2 flex gap-2 sm:justify-end">
+                        <Button
+                          size="sm"
+                          variant={selectedRoom?.id === r.id ? 'secondary' : 'outline'}
+                          onClick={() => setSelectedRoom(r)}
+                          aria-label={`${selectedRoom?.id === r.id ? 'Selected' : 'Select'} ${r.name}`}
+                        >
                           {selectedRoom?.id === r.id ? 'Selected' : 'Select'}
                         </Button>
                       </div>
@@ -490,83 +544,119 @@ export default function EventMicrosite() {
               ))}
             </div>
 
-            <div className="mt-4 flex items-center justify-between">
+            <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <p className="text-sm">Estimated total</p>
                 <p className="text-xl font-bold">{selectedRoom ? `₹${(selectedRoom.price * hotelNights).toLocaleString('en-IN')}` : '—'}</p>
               </div>
-              <div className="flex gap-3">
-                <Button variant="outline" onClick={() => { setSelectedRoom(null); setBookingError(''); }}>Reset</Button>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button
-                      onClick={() => {
-                        if (!selectedRoom) return setBookingError('Please select a room before continuing.');
-                        // Simulate continue to payment: open confirmation modal (UI-only)
-                        try {
-                          setBookingLoading(true);
-                          setReceipt({ id: `RCPT-${Date.now()}`, room: selectedRoom, total: selectedRoom.price * hotelNights, nights: hotelNights });
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
+                <Button className="w-full sm:w-auto" variant="outline" onClick={() => { setSelectedRoom(null); setBookingError(''); }} aria-label="Reset room selection">Reset</Button>
+                <>
+                  <Button
+                    onClick={async () => {
+                      if (!selectedRoom) return setBookingError('Please select a room before continuing.');
+                      setBookingError('');
+                      const price = Number(selectedRoom.price ?? 0);
+                      try {
+                        setBookingLoading(true);
+                        if (price > 0) {
+                          // Payment required — show simulated receipt (existing behaviour)
+                          setReceipt({ id: `RCPT-${Date.now()}`, room: selectedRoom, total: price * hotelNights, nights: hotelNights });
                           setShowConfirmation(true);
-                        } catch (err) {
-                          reportError(err, setBookingError, 'Unable to proceed to payment. Please try again.');
-                        } finally {
-                          setBookingLoading(false);
+                        } else {
+                          // No payment required — create a server-side draft booking
+                          const body = { roomId: selectedRoom.id, roomName: selectedRoom.name, price, nights: hotelNights };
+                          const res = await fetch(`/api/microsite/${event.eventCode}/draft-booking`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(body),
+                          });
+                          if (!res.ok) {
+                            const err = await res.json().catch(() => ({ message: 'Draft failed' }));
+                            throw new Error(err.message ?? 'Draft failed');
+                          }
+                          const data = await res.json();
+                          setReceipt({ id: data.draftRef ?? `DRFT-${Date.now()}`, room: selectedRoom, total: price * hotelNights, nights: hotelNights });
+                          setShowConfirmation(true);
                         }
-                      }}
-                      className="bg-primary text-white"
-                    >
-                      Continue to payment
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Booking Confirmation</DialogTitle>
-                      <DialogDescription>Simulation: this is a UI-only receipt. Use your personalised portal to complete payment.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-2">
-                      {receipt ? (
-                        <div>
-                          <p className="font-medium">Receipt #{receipt.id}</p>
-                          <p className="text-sm text-muted-foreground">{receipt.room.name} · {receipt.nights} night{receipt.nights > 1 ? 's' : ''}</p>
-                          <div className="mt-3 flex gap-2">
-                            <Button onClick={() => {
-                              try {
-                                // Download simple ICS file for the stay
-                                const start = event.hotel.checkIn ? new Date(event.hotel.checkIn) : new Date();
-                                const end = event.hotel.checkOut ? new Date(event.hotel.checkOut) : new Date(Date.now() + 24*60*60*1000);
-                                const ics = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:${receipt.id}\nDTSTAMP:${new Date().toISOString()}\nDTSTART:${start.toISOString()}\nDTEND:${end.toISOString()}\nSUMMARY:${event.name} - ${receipt.room.name}\nDESCRIPTION:${event.description || ''}\nEND:VEVENT\nEND:VCALENDAR`;
-                                const blob = new Blob([ics], { type: 'text/calendar' });
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = `${event.name.replace(/\s+/g,'_')}_${receipt.id}.ics`;
-                                a.click();
-                                URL.revokeObjectURL(url);
-                              } catch (err) {
-                                reportError(err, setBookingError, 'Could not download calendar file.');
-                              }
-                            }}>Download .ics</Button>
-                            <Button onClick={() => {
-                              try {
-                                const subject = encodeURIComponent(`Invitation & booking: ${event.name}`);
-                                const body = encodeURIComponent(`I've booked ${receipt.room.name} for ${receipt.nights} night(s) at ${event.name}. Receipt #${receipt.id}`);
-                                window.open(`mailto:?subject=${subject}&body=${body}`);
-                              } catch (err) {
-                                reportError(err, setBookingError, 'Unable to share via email.');
-                              }
-                            }}>Share</Button>
+                      } catch (err) {
+                        reportError(err, setBookingError, 'Unable to proceed. Please try again.');
+                      } finally {
+                        setBookingLoading(false);
+                      }
+                    }}
+                    className="bg-primary text-white w-full sm:w-auto"
+                    aria-label="Proceed"
+                  >
+                    {selectedRoom ? ((selectedRoom.price ?? 0) > 0 ? 'Continue to payment' : 'Reserve') : 'Select a room'}
+                  </Button>
+
+                  <Dialog open={showConfirmation} onOpenChange={setShowConfirmation}>
+                    <DialogContent className="w-[95vw] max-w-lg max-h-[85vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle>Booking Confirmation</DialogTitle>
+                        <DialogDescription>{(selectedRoom?.price ?? 0) > 0 ? 'Reserving now — we\'ll email confirmation shortly.' : 'Your selection has been saved as a draft. We\'ll follow up with next steps.'}</DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-2">
+                        {receipt ? (
+                          <div>
+                            <p className="font-medium">Receipt #{receipt.id}</p>
+                            <p className="text-sm text-muted-foreground">{receipt.room.name} · {receipt.nights} night{receipt.nights > 1 ? 's' : ''}</p>
+                            <div className="mt-3 flex flex-col sm:flex-row gap-2">
+                              <Button className="w-full sm:w-auto" onClick={() => {
+                                try {
+                                  const start = event.hotel.checkIn ? new Date(event.hotel.checkIn) : new Date();
+                                  const end = event.hotel.checkOut ? new Date(event.hotel.checkOut) : new Date(Date.now() + 24*60*60*1000);
+                                  const ics = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:${receipt.id}\nDTSTAMP:${new Date().toISOString()}\nDTSTART:${start.toISOString()}\nDTEND:${end.toISOString()}\nSUMMARY:${event.name} - ${receipt.room.name}\nDESCRIPTION:${event.description || ''}\nEND:VEVENT\nEND:VCALENDAR`;
+                                  const blob = new Blob([ics], { type: 'text/calendar' });
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = `${event.name.replace(/\s+/g,'_')}_${receipt.id}.ics`;
+                                  a.click();
+                                  URL.revokeObjectURL(url);
+                                } catch (err) {
+                                  reportError(err, setBookingError, 'Could not download calendar file.');
+                                }
+                              }}>Download .ics</Button>
+                              <Button className="w-full sm:w-auto" onClick={() => {
+                                try {
+                                  const subject = encodeURIComponent(`Invitation & booking: ${event.name}`);
+                                  const body = encodeURIComponent(`I've booked ${receipt.room.name} for ${receipt.nights} night(s) at ${event.name}. Receipt #${receipt.id}`);
+                                  window.open(`mailto:?subject=${subject}&body=${body}`);
+                                } catch (err) {
+                                  reportError(err, setBookingError, 'Unable to share via email.');
+                                }
+                              }}>Share</Button>
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No receipt available.</p>
-                      )}
-                      {bookingError && <p className="text-sm text-destructive">{bookingError}</p>}
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No receipt available.</p>
+                        )}
+                        {bookingError && <p className="text-sm text-destructive" role="status" aria-live="polite">{bookingError}</p>}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </>
               </div>
             </div>
-            {bookingError && <p className="text-sm text-destructive mt-3">{bookingError}</p>}
+            {bookingError && <p className="text-sm text-destructive mt-3" role="status" aria-live="polite">{bookingError}</p>}
+            {/* Mobile persistent CTA */}
+            <div className="sm:hidden">
+              <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 right-4 z-50">
+                <div className="bg-background/95 backdrop-blur-md border rounded-lg p-3 shadow-lg flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Estimated total</div>
+                    <div className="font-semibold">{selectedRoom ? `₹${(selectedRoom.price * hotelNights).toLocaleString('en-IN')}` : '—'}</div>
+                  </div>
+                  <div>
+                      <Button onClick={handleProceed} disabled={!selectedRoom} className="bg-primary text-white">
+                      {selectedRoom ? ((selectedRoom.price ?? 0) > 0 ? 'Continue to payment' : 'Reserve') : 'Select a room'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
         )}
 
@@ -574,14 +664,14 @@ export default function EventMicrosite() {
         <section>
           <h2 className="text-xl font-sans font-semibold mb-2">Access Your Invitation</h2>
           <p className="text-sm text-muted-foreground mb-6">
-            If you received a booking reference from the organiser, use it below to access your personalised portal or to let us know you won't be attending.
+            If you received a booking reference from the host, use it below to access your personalised portal or to let us know you won't be attending.
           </p>
 
           {/* Tab switcher */}
           <div className="flex gap-2 mb-6 flex-wrap">
             <button
               onClick={() => setTab("lookup")}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded text-sm font-medium border transition-colors ${
+              className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded text-sm font-medium border transition-colors w-full sm:w-auto ${
                 tab === "lookup"
                   ? "text-white border-transparent"
                   : "border-input text-muted-foreground hover:border-primary/50"
@@ -592,7 +682,7 @@ export default function EventMicrosite() {
             </button>
             <button
               onClick={() => setTab("register")}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded text-sm font-medium border transition-colors ${
+              className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded text-sm font-medium border transition-colors w-full sm:w-auto ${
                 tab === "register"
                   ? "text-white border-transparent"
                   : "border-input text-muted-foreground hover:border-primary/50"
@@ -664,9 +754,9 @@ export default function EventMicrosite() {
                   <div className="space-y-2">
                     <Label htmlFor="ref">Booking Reference</Label>
                     <p className="text-xs text-muted-foreground">
-                      Your booking reference was sent to you by the organiser (eg: GP123456).
+                      Your booking reference was sent to you by the host (eg: GP123456).
                     </p>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
                         <Input
                           id="ref"
                           placeholder="eg: GP123456"
@@ -682,7 +772,7 @@ export default function EventMicrosite() {
                         onClick={handleLookup}
                         disabled={lookupLoading || !bookingRef.trim()}
                         style={{ backgroundColor: primaryColor }}
-                        className="text-white"
+                        className="text-white w-full sm:w-auto"
                       >
                         {lookupLoading ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
@@ -712,13 +802,13 @@ export default function EventMicrosite() {
                     <CheckCircle2 className="w-10 h-10 text-green-500 mx-auto" />
                     <p className="font-semibold">Registration received!</p>
                     <p className="text-sm text-muted-foreground">
-                      Your interest has been noted. The organiser will review and send you a personalised link once confirmed.
+                      Your interest has been noted. The host will review and send you an access link once confirmed.
                     </p>
                   </div>
                 ) : (
                   <>
                     <p className="text-sm text-muted-foreground">
-                      Register your interest. The organiser will send you a personalised access link after confirmation.
+                      Register your interest. The host will review and send you an access link after confirmation.
                     </p>
                     <div className="space-y-3">
                       <div className="space-y-1.5">

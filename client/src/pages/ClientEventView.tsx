@@ -12,6 +12,7 @@
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEvent } from "@/hooks/use-events";
+import { useHotelBookings } from "@/hooks/use-hotel-bookings";
 import { useLabels } from "@/hooks/use-labels";
 import { usePerks } from "@/hooks/use-perks";
 import { useRequests, useUpdateRequest } from "@/hooks/use-requests";
@@ -23,11 +24,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, Calendar, MapPin, Users, DollarSign, Tag, Inbox, Clock, Plus, Upload, FileSpreadsheet, CheckCircle, XCircle } from "lucide-react";
+import { Loader2, Calendar, MapPin, Users, DollarSign, Tag, Inbox, Clock, Plus, Upload, FileSpreadsheet, CheckCircle, XCircle, Plane, Train, Bus, Car, Ship, Building2, UserCheck, UserX, HelpCircle, Gift } from "lucide-react";
 import { format } from "date-fns";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { parseExcelFile, parseCSVFile } from "@/lib/excelParser";
+import { api } from "@shared/routes";
 
 interface ClientEventViewProps {
   eventId: number;
@@ -43,6 +45,18 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
   const { data: guests } = useGuests(eventId);
   const { data: requests } = useRequests(eventId);
   const updateRequest = useUpdateRequest();
+  const { data: hotelBookings } = useHotelBookings(eventId);
+
+  const { data: travelOptions } = useQuery({
+    queryKey: ["travel-options", eventId],
+    queryFn: async () => {
+      const res = await fetch(`/api/events/${eventId}/travel-options`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load travel options");
+      return res.json();
+    },
+    enabled: !!eventId,
+    refetchInterval: 30000,
+  });
 
   // Cost breakdown
   const { data: costBreakdown } = useQuery({
@@ -76,21 +90,25 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
   // Budget edit state per label
   const [budgetEdits, setBudgetEdits] = useState<Record<number, number>>({});
   const [savingBudget, setSavingBudget] = useState<number | null>(null);
+  const labelsQueryKey = [api.labels.list.path, eventId] as const;
 
   const handleSaveBudget = async (labelId: number) => {
     const budget = budgetEdits[labelId];
     if (budget === undefined) return;
     setSavingBudget(labelId);
     try {
-      const res = await fetch(`/api/events/${eventId}/labels/${labelId}`, {
-        method: "PATCH",
+      const res = await fetch(`/api/labels/${labelId}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ addOnBudget: budget }),
       });
-      if (!res.ok) throw new Error("Failed to update budget");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.message || "Failed to update budget");
+      }
       toast({ title: "Budget updated" });
-      queryClient.invalidateQueries({ queryKey: ["labels", eventId] });
+      queryClient.invalidateQueries({ queryKey: labelsQueryKey });
       queryClient.invalidateQueries({ queryKey: ["cost-breakdown", eventId] });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -102,6 +120,7 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
   // Guest import
   const [uploading, setUploading] = useState(false);
   const [pendingImport, setPendingImport] = useState<any[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleClientFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -173,7 +192,7 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
       toast({ title: "Label created!", description: newLabelName.trim() });
       setNewLabelName("");
       setShowAddLabel(false);
-      queryClient.invalidateQueries({ queryKey: ["labels", eventId] });
+      queryClient.invalidateQueries({ queryKey: labelsQueryKey });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
@@ -210,8 +229,35 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
 
   if (!event) return <div className="text-center py-20 text-muted-foreground">Event not found</div>;
 
-  const confirmedGuests = (guests ?? []).filter((g: any) => g.status === "confirmed").length;
-  const pendingGuests = (guests ?? []).filter((g: any) => g.status === "pending").length;
+  const allGuests = (guests ?? []) as any[];
+  const confirmedGuests = allGuests.filter((g: any) => g.status === "confirmed").length;
+  const pendingGuests = allGuests.filter((g: any) => g.status === "pending").length;
+  const declinedGuests = allGuests.filter((g: any) => g.status === "declined").length;
+
+  const hasAnySelfManaged = (guest: any) => {
+    const hasPartialStay = !!guest.partialStayCheckIn || !!guest.partialStayCheckOut;
+    return !!(
+      guest.selfManageFlights ||
+      guest.selfManageHotel ||
+      guest.selfManageArrival ||
+      guest.selfManageDeparture ||
+      hasPartialStay
+    );
+  };
+
+  const isFullSelfManaged = (guest: any) => {
+    const travelFullySelfManaged = !!guest.selfManageFlights || (!!guest.selfManageArrival && !!guest.selfManageDeparture);
+    const stayFullySelfManaged = !!guest.selfManageHotel;
+    return travelFullySelfManaged && stayFullySelfManaged;
+  };
+
+  const fullSelfManagedYes = allGuests.filter((g: any) => g.status === "confirmed" && isFullSelfManaged(g)).length;
+  const partialSelfManagedYes = allGuests.filter((g: any) => g.status === "confirmed" && hasAnySelfManaged(g) && !isFullSelfManaged(g)).length;
+  const hostManagedYes = Math.max(confirmedGuests - fullSelfManagedYes - partialSelfManagedYes, 0);
+
+  const offeredTravelOptions = (travelOptions ?? []) as any[];
+  const offeredHotels = (hotelBookings ?? []) as any[];
+  const offeredAddOns = (perks ?? []) as any[];
   // Client sees requests forwarded to them for approval
   const pendingRequests = (requests ?? []).filter((r: any) => r.status === "forwarded_to_client");
 
@@ -251,11 +297,153 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
             <Users className="w-5 h-5 text-primary mt-0.5 shrink-0" />
             <div>
               <p className="text-xs text-muted-foreground">RSVP Status</p>
-              <p className="font-semibold text-sm">{confirmedGuests} confirmed · {pendingGuests} pending</p>
+              <div className="text-sm space-y-0.5">
+                <p className="font-semibold">Yes (host-managed): {hostManagedYes}</p>
+                <p className="text-muted-foreground">Yes + self-managed (partial): {partialSelfManagedYes}</p>
+                <p className="text-muted-foreground">Yes + self-managed (full): {fullSelfManagedYes}</p>
+                <p className="text-muted-foreground">No: {declinedGuests} · Pending: {pendingGuests}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Offered by Agent */}
+      {(offeredTravelOptions.length > 0 || offeredHotels.length > 0 || offeredAddOns.length > 0) && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Tag className="w-4 h-4" />
+              Offered by Agent
+            </CardTitle>
+            <CardDescription>Hotel, transport, and add-on options currently configured for this event</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge variant="secondary">Transport: {offeredTravelOptions.length}</Badge>
+              <Badge variant="secondary">Hotels: {offeredHotels.length}</Badge>
+              <Badge variant="secondary">Add-ons: {offeredAddOns.length}</Badge>
+            </div>
+            {offeredAddOns.length > 0 && (
+              <div className="space-y-2">
+                {offeredAddOns.map((perk: any) => (
+                  <div key={perk.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/40">
+                    <Gift className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{perk.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {perk.type}
+                        {typeof perk.unitCost === "number" ? ` · ₹${perk.unitCost.toLocaleString('en-IN')}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Guest List — synced from agent + client imports */}
+      {guests && guests.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Users className="w-4 h-4" />
+              Guest List
+              <Badge variant="secondary" className="ml-auto text-xs">{guests.length} total</Badge>
+            </CardTitle>
+            <CardDescription>All guests added by your agent or imported by you</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-border/50">
+              {(guests as any[]).map((guest) => {
+                const isConfirmed = guest.status === "confirmed";
+                const isDeclined = guest.status === "declined";
+                return (
+                  <div key={guest.id} className="flex items-center justify-between px-5 py-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{guest.name}</p>
+                      {guest.category && (
+                        <p className="text-xs text-muted-foreground">{guest.category}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-4">
+                      {isConfirmed ? (
+                        <UserCheck className="w-4 h-4 text-green-600" />
+                      ) : isDeclined ? (
+                        <UserX className="w-4 h-4 text-red-500" />
+                      ) : (
+                        <HelpCircle className="w-4 h-4 text-amber-500" />
+                      )}
+                      <span className={`text-xs font-medium capitalize ${
+                        isConfirmed ? "text-green-700" : isDeclined ? "text-red-600" : "text-amber-600"
+                      }`}>
+                        {guest.status ?? "pending"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Travel & Stays — arranged by agent */}
+      {((travelOptions && travelOptions.length > 0) || (hotelBookings && hotelBookings.length > 0)) && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Plane className="w-4 h-4" />
+              Travel & Stays
+            </CardTitle>
+            <CardDescription>Itinerary and accommodation arranged by your agent</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {(travelOptions ?? []).map((opt: any) => {
+              const ModeIcon =
+                opt.travelMode === "flight" ? Plane
+                : opt.travelMode === "train" ? Train
+                : opt.travelMode === "bus" ? Bus
+                : opt.travelMode === "car" ? Car
+                : opt.travelMode === "ferry" ? Ship
+                : Plane;
+              return (
+                <div key={opt.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/40">
+                  <ModeIcon className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium capitalize">{opt.travelMode}</p>
+                    {opt.fromLocation && opt.toLocation && (
+                      <p className="text-xs text-muted-foreground">{opt.fromLocation} → {opt.toLocation}</p>
+                    )}
+                    {opt.departureDate && (
+                      <p className="text-xs text-muted-foreground">
+                        Departure: {format(new Date(opt.departureDate), "PPP")}
+                        {opt.returnDate ? ` · Return: ${format(new Date(opt.returnDate), "PPP")}` : ""}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {(hotelBookings ?? []).map((booking: any) => (
+              <div key={booking.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/40">
+                <Building2 className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">{booking.hotelName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {format(new Date(booking.checkInDate), "PPP")} → {format(new Date(booking.checkOutDate), "PPP")}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {booking.numberOfRooms} room{booking.numberOfRooms !== 1 ? "s" : ""} reserved
+                  </p>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Guest Import */}
       <Card>
@@ -267,13 +455,27 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
           <CardDescription>Upload a CSV or Excel file to add guests</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <label className="flex items-center gap-2 cursor-pointer w-fit">
-            <Button size="sm" variant="outline" className="gap-2 pointer-events-none" disabled={uploading}>
+          <div className="flex items-center gap-2 w-fit">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              disabled={uploading}
+              onClick={() => fileInputRef.current?.click()}
+            >
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
               Choose file
             </Button>
-            <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleClientFileUpload} disabled={uploading} />
-          </label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              className="hidden"
+              onChange={handleClientFileUpload}
+              disabled={uploading}
+            />
+          </div>
           {pendingImport.length > 0 && (
             <div className="flex items-center gap-3 p-3 rounded-lg bg-accent/30 text-sm">
               <span className="font-medium">{pendingImport.length} guests ready to import</span>

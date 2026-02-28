@@ -4,12 +4,14 @@
  * TraceId is preserved in component state through all phases.
  */
 import { useState } from "react";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, ChevronDown, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
 import {
   useTBOFlightSearch,
@@ -20,6 +22,129 @@ import {
 import { FlightResultsList, type FlightResult } from "./FlightResultsList";
 import { FlightDetailCard } from "./FlightDetailCard";
 import { FlightBookingConfirmCard } from "./FlightBookingConfirmCard";
+
+// Common airports — covers most Indian and international group travel routes
+const AIRPORTS = [
+  { code: "DEL", name: "Indira Gandhi Intl — New Delhi" },
+  { code: "BOM", name: "Chhatrapati Shivaji — Mumbai" },
+  { code: "BLR", name: "Kempegowda Intl — Bengaluru" },
+  { code: "MAA", name: "Chennai International" },
+  { code: "CCU", name: "Netaji Subhash Chandra Bose — Kolkata" },
+  { code: "HYD", name: "Rajiv Gandhi Intl — Hyderabad" },
+  { code: "GOI", name: "Dabolim — Goa" },
+  { code: "AMD", name: "Sardar Vallabhbhai Patel — Ahmedabad" },
+  { code: "COK", name: "Cochin International — Kochi" },
+  { code: "PNQ", name: "Pune International" },
+  { code: "JAI", name: "Jaipur International" },
+  { code: "IXC", name: "Shaheed Bhagat Singh — Chandigarh" },
+  { code: "NAG", name: "Dr. Babasaheb Ambedkar — Nagpur" },
+  { code: "BBI", name: "Biju Patnaik — Bhubaneswar" },
+  { code: "GAU", name: "Lokpriya Gopinath Bordoloi — Guwahati" },
+  { code: "DXB", name: "Dubai International" },
+  { code: "AUH", name: "Abu Dhabi International" },
+  { code: "SHJ", name: "Sharjah International" },
+  { code: "DOH", name: "Hamad International — Doha" },
+  { code: "BAH", name: "Bahrain International" },
+  { code: "MCT", name: "Muscat International" },
+  { code: "RUH", name: "King Khalid — Riyadh" },
+  { code: "JED", name: "King Abdulaziz — Jeddah" },
+  { code: "KWI", name: "Kuwait International" },
+  { code: "SIN", name: "Changi — Singapore" },
+  { code: "KUL", name: "Kuala Lumpur International" },
+  { code: "BKK", name: "Suvarnabhumi — Bangkok" },
+  { code: "HKG", name: "Hong Kong International" },
+  { code: "NRT", name: "Narita — Tokyo" },
+  { code: "ICN", name: "Incheon — Seoul" },
+  { code: "PEK", name: "Capital — Beijing" },
+  { code: "PVG", name: "Pudong — Shanghai" },
+  { code: "SYD", name: "Kingsford Smith — Sydney" },
+  { code: "MEL", name: "Tullamarine — Melbourne" },
+  { code: "LHR", name: "Heathrow — London" },
+  { code: "LGW", name: "Gatwick — London" },
+  { code: "CDG", name: "Charles de Gaulle — Paris" },
+  { code: "FRA", name: "Frankfurt International" },
+  { code: "AMS", name: "Schiphol — Amsterdam" },
+  { code: "ZUR", name: "Zurich International" },
+  { code: "MXP", name: "Malpensa — Milan" },
+  { code: "JFK", name: "John F. Kennedy — New York" },
+  { code: "LAX", name: "Los Angeles International" },
+  { code: "ORD", name: "O'Hare — Chicago" },
+  { code: "SFO", name: "San Francisco International" },
+  { code: "CMB", name: "Bandaranaike — Colombo" },
+  { code: "DAC", name: "Hazrat Shahjalal — Dhaka" },
+  { code: "KTM", name: "Tribhuvan — Kathmandu" },
+  { code: "MLE", name: "Velana International — Malé" },
+  { code: "NBO", name: "Jomo Kenyatta — Nairobi" },
+  { code: "JNB", name: "OR Tambo — Johannesburg" },
+  { code: "CAI", name: "Cairo International" },
+];
+
+/** Searchable airport combobox — filters by code or city name */
+function AirportCombobox({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (code: string) => void;
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedAirport = AIRPORTS.find(a => a.code === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+          <span className="truncate">
+            {selectedAirport
+              ? <><span className="font-mono font-semibold">{selectedAirport.code}</span> — {selectedAirport.name.split(" — ")[1] ?? selectedAirport.name}</>
+              : value
+                ? <span className="font-mono font-semibold">{value}</span>
+                : <span className="text-muted-foreground">{placeholder}</span>}
+          </span>
+          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[320px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search by city or code…" />
+          <CommandList>
+            <CommandEmpty>
+              <div className="py-3 px-2 text-center">
+                <p className="text-sm text-muted-foreground mb-2">Airport not in list.</p>
+                <Input
+                  placeholder="Enter IATA code (e.g. DEL)"
+                  maxLength={3}
+                  className="text-center font-mono uppercase"
+                  value={value}
+                  onChange={e => onChange(e.target.value.toUpperCase())}
+                  onKeyDown={e => { if (e.key === "Enter") setOpen(false); }}
+                />
+              </div>
+            </CommandEmpty>
+            <CommandGroup heading="Common Airports">
+              {AIRPORTS.map(a => (
+                <CommandItem
+                  key={a.code}
+                  value={`${a.code} ${a.name}`}
+                  onSelect={() => {
+                    onChange(a.code);
+                    setOpen(false);
+                  }}
+                >
+                  <Check className={`mr-2 h-4 w-4 ${value === a.code ? "opacity-100" : "opacity-0"}`} />
+                  <span className="font-mono font-medium w-10 shrink-0">{a.code}</span>
+                  <span className="text-sm text-muted-foreground truncate">{a.name}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 type Phase = "search" | "results" | "detail" | "confirm";
 
@@ -51,6 +176,7 @@ interface Props {
 export function FlightSearchPanel({ eventId, onBooked }: Props) {
   const { toast } = useToast();
   const [phase, setPhase] = useState<Phase>("search");
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useState<SearchParams>({
     origin: "",
     destination: "",
@@ -81,6 +207,7 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
       toast({ title: "Missing fields", description: "Origin, destination and departure date are required.", variant: "destructive" });
       return;
     }
+    setSearchError(null);
     try {
       const result = await flightSearch.mutateAsync({
         origin: searchParams.origin.toUpperCase(),
@@ -106,7 +233,9 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
       setFlightResults(results);
       setPhase("results");
     } catch (err: any) {
-      toast({ title: "Search failed", description: err.message, variant: "destructive" });
+      const msg: string = err.message ?? "TBO unavailable";
+      setSearchError(msg);
+      toast({ title: "Search failed", description: msg, variant: "destructive" });
     }
   };
 
@@ -161,7 +290,6 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
 
       if (isLCC) {
         // LCC flow: Ticket directly (no Book step)
-        // Request shape: { traceId, resultIndex, passengers, fare }
         ticketResult = await issueTicket.mutateAsync({
           traceId,
           resultIndex: selectedFlight.ResultIndex,
@@ -171,7 +299,6 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
         pnr = ticketResult?.Response?.PNR ?? ticketResult?.PNR ?? "PENDING";
       } else {
         // Non-LCC/GDS flow: Book → get PNR+BookingId → Ticket
-        // Ticket request shape: { traceId, pnr, bookingId }
         const bookResult = await bookFlight.mutateAsync({
           traceId,
           resultIndex: selectedFlight.ResultIndex,
@@ -278,21 +405,19 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <Label>Origin (IATA code)</Label>
-            <Input
-              placeholder="DEL"
-              maxLength={3}
+            <Label>Origin</Label>
+            <AirportCombobox
               value={searchParams.origin}
-              onChange={(e) => set("origin", e.target.value.toUpperCase())}
+              onChange={(v) => set("origin", v)}
+              placeholder="Select origin airport"
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Destination (IATA code)</Label>
-            <Input
-              placeholder="DXB"
-              maxLength={3}
+            <Label>Destination</Label>
+            <AirportCombobox
               value={searchParams.destination}
-              onChange={(e) => set("destination", e.target.value.toUpperCase())}
+              onChange={(v) => set("destination", v)}
+              placeholder="Select destination airport"
             />
           </div>
           <div className="space-y-1.5">
@@ -356,6 +481,14 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
             <><Search className="w-4 h-4 mr-2" /> Search Flights</>
           )}
         </Button>
+
+        {searchError && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <p className="font-medium mb-1">TBO flight search unavailable</p>
+            <p className="text-xs text-amber-700">{searchError}</p>
+            <p className="text-xs mt-1 text-amber-700">Use the <strong>Enter Manually</strong> option to add this transport leg without live booking.</p>
+          </div>
+        )}
       </div>
     );
   }

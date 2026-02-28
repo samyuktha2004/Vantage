@@ -2,77 +2,80 @@
 
 ## One-line pitch
 
-An end-to-end Event Hospitality Management platform that streamlines guest onboarding, travel coordination and real-time capacity monitoring with secure guest access links and built-in TBO integrations.
+Vantage is an event-hospitality operating system for MICE and destination events: guest onboarding, travel coordination, approvals, and live capacity tracking in one workflow.
 
-## Problem Statement
+## Problem
 
-Large corporate events require fast, reliable guest management and travel coordination. Manual guest handling causes lost time, capacity issues, and mismatched travel arrangements.
+Group travel operations are still fragmented across spreadsheets, calls, and manual follow-ups. This causes inventory leakage, delayed confirmations, and poor guest experience.
 
-## Our Solution
+## Solution
 
-Vantage provides organizers a unified dashboard to import and manage guest lists, issue secure guest portal links, coordinate travel bookings (hotel & flights), and manage approvals and requests — with real-time capacity alerts and downloadable reports.
+Vantage connects agent operations and guest self-service:
 
-## Why this wins
+- Agent side: event setup, guest import, label/perk policy, approvals, and reporting.
+- Guest side: token-based access link, RSVP and preferences, travel visibility, and request workflow.
+- Integration side: TBO hotel and flight proxy routes for live search and booking orchestration.
 
-- Comprehensive end-to-end flow: import → manage → notify → report.
-- Token-based guest access removes password friction while preserving security.
-- Native integrations for TBO (hotel & flight endpoints) make bookings and prebook flows demonstrable to judges.
-- Focus on operational needs (capacity warnings, approval workflow, ID vault) that organizers value in production.
+## What is in the MVP
 
-## Key Features
+- Bulk guest import (Excel/CSV) and event-level guest lifecycle management.
+- Token-based guest portal (`/guest/:token`) without password friction.
+- TBO-backed hotel and flight flow coverage through server-side integrations.
+- Capacity alerts and operational dashboards for event control.
+- Request approval and downloadable reports for execution teams.
 
-- Bulk guest import (Excel/CSV) with data validation and reporting.
-- Unique, secure guest access links (token-based portal).
-- Hotel & flight search + prebook/book flows using TBO APIs (placeholders for credentials in `.env.example`).
-- Approval and request workflow for payments and room upgrades.
-- Real-time capacity monitoring and visual alerts.
-- Document vault for IDs (Supabase storage) and exportable Excel reports.
+## Judge review path
 
-## Technical Highlights
+1. Start the app via [QUICKSTART.md](./QUICKSTART.md).
+2. Create an event and import a guest list.
+3. Run hotel/flight search from event setup (with TBO credentials).
+4. Open guest portal via token link and complete RSVP/request flow.
 
-- Frontend: React + TypeScript, Tailwind, Framer Motion, React Query.
-- Backend: Express + TypeScript, Drizzle ORM, PostgreSQL (Supabase), secure sessions.
-- CI/Deployment: repository-ready for GitHub Actions, deployable to Vercel/Netlify (see `DEPLOY.md` placeholder).
+Technical references:
 
-## TBO Integration
+- Integration setup: [TBO_API_SETUP.md](./TBO_API_SETUP.md)
+- API deep reference: [API_INTEGRATION.md](./API_INTEGRATION.md)
+- Documentation map: [README.md](./README.md)
 
-- We demonstrate TBO hotel/flight flows in `server/tbo/` and `server/tbo-*` routes and provide a Postman collection in the repo root for reproducibility.
-- Credentials are intentionally omitted; use `TBO_*` env vars (see `.env.example`) to run live tests.
+## Why this is competitive
 
-## Run locally
+- Clear end-to-end operator workflow (plan → assign → confirm → monitor).
+- Strong travel context with practical TBO integration boundaries.
+- Guest UX optimized for conversion (no account creation, direct action routes).
+- Real operational value: reduced manual coordination and better inventory control.
 
-1. Copy placeholders: `cp .env.example .env` and fill in Supabase and (optional) TBO credentials.
-2. Install: `npm install`
-3. Migrate DB: `npm run db:push`
-4. Start dev server: `npm run dev`
+## MVP improvements (Judge + Travel Mentor Assessment)
 
-## What to review in the repo
+Top priorities to improve scoring and pilot-readiness:
 
-- `client/src/pages` — UI flows for guests, agent dashboard, approvals.
-- `server/` — API routes, TBO integration, Supabase client code.
-- `docs/SUPABASE_SETUP.md` and `README.md` — setup and evaluation instructions.
-- `HotelAPI Client.postman_collection 6.json` — collection to replay hotel/booking calls.
+1. **Rate integrity guardrails (High impact / Medium effort)**
+   - Add pre-confirmation reprice checks for hotel/air.
+   - Display fare/rate change warnings before final confirmation.
 
-## Demo and assets
+2. **Inventory reliability layer (High / Medium)**
+   - Reserve-hold timeout handling with clear expiry UX.
+   - Atomic seat/room decrement logic to avoid over-allocation in concurrent actions.
 
-- A short demo GIF and optional video link will be added to `README.md` (recommendation: 60–90s highlighting import → booking → approval flows).
+3. **Operational communication baseline (High / Low)**
+   - Add essential notifications: RSVP pending, booking confirmed, request approved/declined.
+   - Keep channels simple first: email templates + resend action.
 
-## Scoring guidance for judges
+4. **Failure transparency for TBO calls (High / Low)**
+   - Normalize upstream errors into user-safe messages.
+   - Add retry hints and fallback to manual entry where supported.
 
-Map features to common hackathon criteria:
+5. **Commercial visibility for agents (Medium / Medium)**
+   - Add per-event margin/cost view (blocked vs confirmed vs expected).
+   - Surface self-pay exposure and outstanding approvals.
 
-- Innovation: token-based guest access + payload minimization.
-- Technical complexity: TBO integration, real-time capacity logic, document vault.
-- UX & polish: focused flows, clear error handling, and exportable reporting.
+6. **Compliance hardening for document handling (Medium / Medium)**
+   - Enforce upload retention window and secure deletion process.
+   - Add explicit consent and access audit trail for ID document actions.
 
-## Notes for judges
+## Submission note
 
-- The repo intentionally uses `env.example` for credentials — reviewers can run with their own keys. If you need live TBO sandbox credentials, contact the team via the repo issue or email listed in `README.md`.
-
-## Release
-
-We will tag `voyagehack-3.0` for the submission release and attach a zip containing the production-ready build.
+Credentials are intentionally excluded from the repository. Use `.env.example` placeholders and your own test credentials for live verification.
 
 ---
 
-_Prepared for VoyageHack 3.0 by Travel Boutique Online (TBO). For questions or a live walkthrough, open an issue or contact the maintainers._
+Prepared for VoyageHack 3.0 (TBO).

@@ -36,6 +36,7 @@ import {
   X,
   UserPlus,
   Plane,
+  UserX,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Html5Qrcode } from "html5-qrcode";
@@ -130,6 +131,22 @@ export default function CheckInDashboard() {
     mutationFn: markArrived,
     onSuccess: () => {
       toast({ title: "Guest marked as arrived" });
+      queryClient.invalidateQueries({ queryKey: ["guests-checkin", eventId] });
+      queryClient.invalidateQueries({ queryKey: ["checkin-stats", eventId] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const noShowMutation = useMutation({
+    mutationFn: async (guestId: number) => {
+      const res = await fetch(`/api/groundteam/no-show/${guestId}`, { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error("Failed to mark no-show");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Marked as no-show" });
       queryClient.invalidateQueries({ queryKey: ["guests-checkin", eventId] });
       queryClient.invalidateQueries({ queryKey: ["checkin-stats", eventId] });
     },
@@ -256,6 +273,7 @@ export default function CheckInDashboard() {
   const total = stats?.total ?? guests.length;
   const confirmed = stats?.confirmed ?? 0;
   const pending = stats?.pending ?? 0;
+  const noShow = stats?.noShow ?? 0;
   const pct = total > 0 ? Math.round((arrived / total) * 100) : 0;
 
   return (
@@ -302,7 +320,7 @@ export default function CheckInDashboard() {
           </div>
 
           {/* Live stats */}
-          <div className="grid grid-cols-4 gap-2 text-center text-xs">
+          <div className="grid grid-cols-5 gap-1.5 text-center text-xs">
             <div className="bg-primary-foreground/10 rounded p-2">
               <p className="font-bold text-lg">{arrived}</p>
               <p className="text-primary-foreground/70">Arrived</p>
@@ -314,6 +332,10 @@ export default function CheckInDashboard() {
             <div className="bg-primary-foreground/10 rounded p-2">
               <p className="font-bold text-lg">{pending}</p>
               <p className="text-primary-foreground/70">Pending</p>
+            </div>
+            <div className="bg-red-500/20 rounded p-2">
+              <p className="font-bold text-lg">{noShow}</p>
+              <p className="text-primary-foreground/70">No-show</p>
             </div>
             <div className="bg-primary-foreground/10 rounded p-2">
               <p className="font-bold text-lg">{total}</p>
@@ -464,10 +486,11 @@ export default function CheckInDashboard() {
 
         {filtered.map((guest: any) => {
           const isArrived = guest.status === "arrived";
+          const isNoShow = guest.status === "no_show";
           const isConfirmed = guest.status === "confirmed" || guest.rsvpStatus === "confirmed";
 
           return (
-            <Card key={guest.id} className={`border ${isArrived ? "border-green-300 bg-green-50/30" : flightStatusBorderClass(guest.flightStatus)}`}>
+            <Card key={guest.id} className={`border ${isArrived ? "border-green-300 bg-green-50/30" : isNoShow ? "border-red-300 bg-red-50/20 opacity-60" : flightStatusBorderClass(guest.flightStatus)}`}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -483,10 +506,15 @@ export default function CheckInDashboard() {
                           <CheckCircle2 className="w-3 h-3 mr-1" /> Arrived
                         </Badge>
                       )}
-                      {!isArrived && isConfirmed && (
+                      {isNoShow && (
+                        <Badge className="bg-red-100 text-red-700 border-red-300 text-xs">
+                          <UserX className="w-3 h-3 mr-1" /> No-show
+                        </Badge>
+                      )}
+                      {!isArrived && !isNoShow && isConfirmed && (
                         <Badge variant="secondary" className="text-xs">Confirmed</Badge>
                       )}
-                      {!isArrived && !isConfirmed && (
+                      {!isArrived && !isNoShow && !isConfirmed && (
                         <Badge variant="outline" className="text-xs text-muted-foreground">Pending RSVP</Badge>
                       )}
                     </div>
@@ -565,19 +593,30 @@ export default function CheckInDashboard() {
                     )}
                   </div>
 
-                  {!isArrived && (
-                    <Button
-                      size="sm"
-                      className="shrink-0"
-                      onClick={() => arrivedMutation.mutate(guest.id)}
-                      disabled={arrivedMutation.isPending}
-                    >
-                      {arrivedMutation.isPending ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Arrived</>
-                      )}
-                    </Button>
+                  {!isArrived && !isNoShow && (
+                    <div className="flex flex-col gap-1.5 shrink-0">
+                      <Button
+                        size="sm"
+                        className="w-full"
+                        onClick={() => arrivedMutation.mutate(guest.id)}
+                        disabled={arrivedMutation.isPending}
+                      >
+                        {arrivedMutation.isPending ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Arrived</>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full border-red-200 text-red-600 hover:bg-red-50 text-xs"
+                        onClick={() => noShowMutation.mutate(guest.id)}
+                        disabled={noShowMutation.isPending}
+                      >
+                        <UserX className="w-3 h-3 mr-1" /> No-show
+                      </Button>
+                    </div>
                   )}
                 </div>
               </CardContent>

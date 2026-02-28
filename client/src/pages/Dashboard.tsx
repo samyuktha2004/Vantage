@@ -3,7 +3,7 @@ import { useEvents, useCreateEvent, useDeleteEvent } from "@/hooks/use-events";
 import { useQuery } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/Layout";
 import { Link, useLocation } from "wouter";
-import { Plus, MapPin, Calendar, ArrowRight, Loader2, Trash2, MoreVertical, Settings, Tag, Gift } from "lucide-react";
+import { Plus, MapPin, Calendar, ArrowRight, Loader2, Trash2, MoreVertical, Settings, Tag, Gift, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -47,6 +47,36 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 
+// EWS Badge — lazy inventory status fetched per event card
+function EWSBadge({ eventId }: { eventId: number }) {
+  const { data } = useQuery({
+    queryKey: ["ews-status", eventId],
+    queryFn: async () => {
+      const res = await fetch(`/api/events/${eventId}/inventory/status`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    staleTime: 60000,
+    retry: false,
+  });
+  if (!data) return null;
+  const allAlerts = [...(data.hotels ?? []), ...(data.flights ?? [])];
+  const critical = allAlerts.some((a: any) => a.severity === "critical");
+  const warning = allAlerts.some((a: any) => a.severity === "warning");
+  if (!critical && !warning) return null;
+  return (
+    <span
+      title={critical ? "Inventory critical — action required" : "Inventory warning"}
+      className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
+        critical ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+      }`}
+    >
+      <AlertTriangle className="w-3 h-3" />
+      {critical ? "Critical" : "Low inventory"}
+    </span>
+  );
+}
+
 const createEventFormSchema = insertEventSchema.pick({
   name: true,
   date: true,
@@ -69,6 +99,16 @@ export default function Dashboard() {
   const { toast } = useToast();
   const isAgent = user?.role === "agent";
   const isClient = user?.role === "client";
+  const isGroundTeam = user?.role === "groundTeam";
+
+  // Ground team users are scoped to a single event — redirect them immediately
+  useEffect(() => {
+    if (!isGroundTeam) return;
+    fetch("/api/groundteam/my-event", { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.id) navigate(`/groundteam/${data.id}/checkin`); })
+      .catch(() => {});
+  }, [isGroundTeam]);
 
   // Agents use the standard events hook; clients use a dedicated endpoint
   const { data: agentEvents, isLoading: agentLoading } = useEvents();
@@ -403,6 +443,7 @@ export default function Dashboard() {
                   <span className="px-3 py-1 bg-muted rounded-full text-xs font-medium text-muted-foreground">
                     Active
                   </span>
+                  {isAgent && <EWSBadge eventId={event.id} />}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                       <button className="p-2 hover:bg-muted rounded-lg transition-colors">

@@ -1,6 +1,7 @@
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Home } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 
 type NavigationProps = {
   showBack?: boolean;
@@ -9,13 +10,14 @@ type NavigationProps = {
 
 export function Navigation({ showBack = true, showHome = true }: NavigationProps) {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
 
   const handleBack = () => {
     window.history.back();
   };
 
   const handleHome = () => {
-    setLocation("/");
+    setLocation(user ? "/dashboard" : "/");
   };
 
   return (

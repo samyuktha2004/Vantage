@@ -26,7 +26,7 @@ import type {
 function getBaseUrl(): string {
   const url = process.env.TBO_HOTEL_URL;
   if (!url) throw new Error("TBO_HOTEL_URL is not configured in .env");
-  return url;
+  return url.replace(/\/+$/, "");
 }
 
 function getAuthHeader(): string {
@@ -46,16 +46,29 @@ function hotelHeaders() {
   };
 }
 
-async function tboHotelFetch<T>(path: string, body?: object): Promise<T> {
+async function parseJsonSafe(res: Response): Promise<any> {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`TBO Hotel API returned non-JSON response (HTTP ${res.status})`);
+  }
+}
+
+async function tboHotelFetchOnce<T>(
+  path: string,
+  method: "GET" | "POST",
+  body?: object,
+): Promise<T> {
   const url = `${getBaseUrl()}${path}`;
-  const method = body ? "POST" : "GET";
   const res = await fetch(url, {
     method,
     headers: hotelHeaders(),
-    body: body ? JSON.stringify(body) : undefined,
+    body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,
   });
 
-  const data = (await res.json()) as any;
+  const data = await parseJsonSafe(res);
 
   if (!res.ok) {
     throw new Error(`TBO Hotel API HTTP error ${res.status} at ${path}`);
@@ -68,20 +81,51 @@ async function tboHotelFetch<T>(path: string, body?: object): Promise<T> {
   return data as T;
 }
 
+async function tboHotelFetch<T>(
+  path: string,
+  body?: object,
+  method: "GET" | "POST" = body ? "POST" : "GET",
+): Promise<T> {
+  try {
+    return await tboHotelFetchOnce<T>(path, method, body);
+  } catch (err: any) {
+    const shouldRetryWithPost =
+      method === "GET" && /HTTP error 405|HTTP error 404|non-JSON/i.test(String(err?.message ?? ""));
+    if (shouldRetryWithPost) {
+      return tboHotelFetchOnce<T>(path, "POST", body ?? {});
+    }
+    throw err;
+  }
+}
+
 // ─── Country List ─────────────────────────────────────────────────────────────
 
 export async function getCountryList(): Promise<TBOHotelCountry[]> {
-  const data = await tboHotelFetch<{ CountryList?: TBOHotelCountry[] }>("/CountryList");
-  return data.CountryList ?? [];
+  const data = await tboHotelFetch<any>("/CountryList");
+  const rawList = data?.CountryList ?? data?.Countries ?? data?.Response?.CountryList ?? [];
+  if (!Array.isArray(rawList)) return [];
+  return rawList
+    .map((item: any) => ({
+      Code: item?.Code ?? item?.CountryCode ?? item?.code ?? item?.countryCode,
+      Name: item?.Name ?? item?.CountryName ?? item?.name ?? item?.countryName,
+    }))
+    .filter((item: any) => item.Code && item.Name);
 }
 
 // ─── City List ────────────────────────────────────────────────────────────────
 
 export async function getCityList(countryCode: string): Promise<TBOHotelCity[]> {
-  const data = await tboHotelFetch<{ CityList?: TBOHotelCity[] }>("/CityList", {
+  const data = await tboHotelFetch<any>("/CityList", {
     CountryCode: countryCode,
   });
-  return data.CityList ?? [];
+  const rawList = data?.CityList ?? data?.Cities ?? data?.Response?.CityList ?? [];
+  if (!Array.isArray(rawList)) return [];
+  return rawList
+    .map((item: any) => ({
+      Code: item?.Code ?? item?.CityCode ?? item?.code ?? item?.cityCode,
+      Name: item?.Name ?? item?.CityName ?? item?.name ?? item?.cityName,
+    }))
+    .filter((item: any) => item.Code && item.Name);
 }
 
 // ─── Hotel Code List ──────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ import {
   type InsertTravelOption, type TravelOption, type InsertTravelSchedule, type TravelSchedule,
   type ItineraryEvent, type GroupInventory, type InsertGroupInventory
 } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 
 // Combine IAuthStorage with app-specific storage methods if needed, 
 // or just export a new interface for app data.
@@ -277,12 +277,29 @@ export class DatabaseStorage implements IStorage {
       // Auto-generate access token and booking reference for guest portal
       const accessToken = randomUUID();
       const bookingRef = `GP${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+      let resolvedLabelId = guest.labelId ?? null;
+      if (!resolvedLabelId && guest.category && guest.category.trim()) {
+        const normalizedCategory = guest.category.trim().toLowerCase();
+        const [matchedLabel] = await db
+          .select()
+          .from(labels)
+          .where(and(
+            eq(labels.eventId, guest.eventId),
+            sql`lower(${labels.name}) = ${normalizedCategory}`
+          ))
+          .limit(1);
+        if (matchedLabel) {
+          resolvedLabelId = matchedLabel.id;
+        }
+      }
       
       console.log('[STORAGE] Generating guest with token:', accessToken, 'ref:', bookingRef);
       
       // Convert phone to string if it's a number
       const guestData = {
         ...guest,
+        labelId: resolvedLabelId,
         phone: guest.phone ? String(guest.phone) : null,
         accessToken,
         bookingRef,

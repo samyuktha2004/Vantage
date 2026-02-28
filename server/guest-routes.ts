@@ -8,7 +8,7 @@
 import { Router } from 'express';
 import { db } from './db';
 import { guests, guestFamily, itineraryEvents, guestItinerary, events, labels, labelPerks, perks, guestRequests, groupInventory } from '@shared/schema';
-import { eq, and, lt, sql, sum } from 'drizzle-orm';
+import { eq, and, lt, sql, sum, asc } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
 const guestRoutes = Router();
@@ -173,24 +173,35 @@ guestRoutes.put('/api/guest/:token/rsvp', async (req, res) => {
     
     const guest = await getGuestByToken(token);
     
-    // If guest is declining, delete them from the system
+    // If guest is declining, clean up and auto-promote next waitlisted guest
     if (status === 'declined') {
+      // Waitlist auto-promote: give their spot to the highest-priority waitlisted guest
+      const [nextOnWaitlist] = await db
+        .select()
+        .from(guests)
+        .where(and(eq(guests.eventId, guest.eventId), eq(guests.isOnWaitlist, true)))
+        .orderBy(asc(guests.waitlistPriority), asc(guests.id))
+        .limit(1);
+      if (nextOnWaitlist) {
+        await db
+          .update(guests)
+          .set({ isOnWaitlist: false })
+          .where(eq(guests.id, nextOnWaitlist.id));
+        console.log(`[waitlist] Promoted guest #${nextOnWaitlist.id} (${nextOnWaitlist.name}) from waitlist`);
+      }
+
       // Delete family members first
-      await db
-        .delete(guestFamily)
-        .where(eq(guestFamily.guestId, guest.id));
-      
+      await db.delete(guestFamily).where(eq(guestFamily.guestId, guest.id));
       // Delete guest itinerary registrations
-      await db
-        .delete(guestItinerary)
-        .where(eq(guestItinerary.guestId, guest.id));
-      
+      await db.delete(guestItinerary).where(eq(guestItinerary.guestId, guest.id));
       // Delete the guest
-      await db
-        .delete(guests)
-        .where(eq(guests.id, guest.id));
-      
-      return res.json({ success: true, message: 'Your response has been recorded. You have been removed from the guest list.' });
+      await db.delete(guests).where(eq(guests.id, guest.id));
+
+      return res.json({
+        success: true,
+        message: 'Your response has been recorded. You have been removed from the guest list.',
+        ...(nextOnWaitlist ? { waitlistPromoted: true } : {}),
+      });
     }
     
     // Validate seat allocation for confirmed guests
@@ -465,8 +476,23 @@ guestRoutes.post('/api/guest/:token/itinerary/:eventId/register', async (req, re
       return res.status(400).json({ message: 'Event is full' });
     }
     
-    // TODO: Check for time conflicts with other registered events
-    
+    // Conflict-Aware Logic: reject if this event overlaps a registered one
+    const existingRegs = await db
+      .select({ ev: itineraryEvents })
+      .from(guestItinerary)
+      .innerJoin(itineraryEvents, eq(guestItinerary.itineraryEventId, itineraryEvents.id))
+      .where(eq(guestItinerary.guestId, guest.id));
+
+    const conflict = existingRegs.find(({ ev }) =>
+      ev.startTime < event.endTime && ev.endTime > event.startTime
+    );
+    if (conflict) {
+      return res.status(409).json({
+        message: `This activity overlaps with "${conflict.ev.title}". Please deselect it first.`,
+        conflicts: [conflict.ev.title],
+      });
+    }
+
     // Register guest
     await db.insert(guestItinerary).values({
       guestId: guest.id,
@@ -482,10 +508,7 @@ guestRoutes.post('/api/guest/:token/itinerary/:eventId/register', async (req, re
       })
       .where(eq(itineraryEvents.id, event.id));
     
-    res.json({
-      success: true,
-      conflicts: [], // TODO: Return actual conflicts if any
-    });
+    res.json({ success: true, conflicts: [] });
     
   } catch (error) {
     console.error('Event registration error:', error);

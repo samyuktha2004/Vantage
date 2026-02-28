@@ -22,7 +22,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-muted/30 flex flex-col">
-      <Navigation />
+      <Navigation showBack={false} showHome={false} />
       <div className="flex flex-1">
       {/* Sidebar */}
       <aside className="w-64 bg-primary text-primary-foreground hidden md:flex flex-col fixed inset-y-0 top-[52px]">

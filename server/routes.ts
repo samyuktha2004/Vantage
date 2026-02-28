@@ -11,7 +11,7 @@ import tboFlightRoutes from "./tbo-flight-routes";
 import { db } from "./db";
 import { searchHotels } from "./tbo/tboHotelService";
 import { events, hotelBookings, travelOptions, itineraryEvents, guests, labels, guestRequests } from "@shared/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, or } from "drizzle-orm";
 
 // Middleware to get user from session
 function getUser(req: any) {
@@ -1061,17 +1061,74 @@ export async function registerRoutes(
 
       if (enableLive) {
         try {
-          // NOTE: For a robust implementation we'd derive search params from the
-          // event's `hotelBookings` / `tboHotelData`. For MVP we attempt a best-effort
-          // call pattern but do NOT return any PII or booking tokens — only public
-          // display fields (name, id, price estimate).
-          // Placeholder: call into the TBO hotel service (searchHotels) if maintainers
-          // wire the correct request body here.
-          // const searchReq = buildSearchRequestFromEvent(event);
-          // const resp = await searchHotels(searchReq);
-          // Map resp to a sanitized rooms list here.
-          // For now, fall through to mocked response if live mapping isn't wired.
-          console.log('[Microsite] ENABLE_TBO_MICROSITE_ROOMS=true but live mapping not configured; returning fallback rooms.');
+          // Attempt to derive TBO search parameters from any existing hotel booking
+          const hotelBookingsLive = await storage.getHotelBookings(event.id);
+          const firstHotelLive = hotelBookingsLive?.[0];
+          const tboData = (firstHotelLive as any)?.tboHotelData ?? null;
+
+          // Derive a TBO hotel code if available
+          const hotelCode = tboData?.hotelCode ?? tboData?.hotel?.HotelCode ?? tboData?.HotelCode ?? null;
+          if (!hotelCode) {
+            console.log('[Microsite] No hotelCode found in event hotelBooking.tboHotelData — falling back to mock rooms');
+          } else {
+            // Build a minimal TBO search request (safe — only availability/pricing)
+            const toYMD = (d: any) => {
+              if (!d) return null;
+              const dt = new Date(d);
+              if (isNaN(dt.getTime())) return null;
+              return dt.toISOString().slice(0, 10);
+            };
+
+            const checkIn = toYMD(firstHotelLive?.checkInDate) ?? toYMD(event.date) ?? null;
+            const checkOut = toYMD(firstHotelLive?.checkOutDate) ?? null;
+
+            if (!checkIn || !checkOut) {
+              console.log('[Microsite] Missing checkIn/checkOut — cannot perform live TBO search, falling back to mock');
+            } else {
+              const searchReq = {
+                CheckIn: checkIn,
+                CheckOut: checkOut,
+                HotelCodes: String(hotelCode),
+                GuestNationality: (tboData?.GuestNationality ?? tboData?.Nationality ?? 'IN'),
+                PaxRooms: [{ Adults: 2, Children: 0 }],
+                ResponseTime: 20,
+                IsDetailedResponse: true,
+                Filters: {
+                  Refundable: false,
+                  NoOfRooms: firstHotelLive?.numberOfRooms ?? 1,
+                  MealType: tboData?.mealPlan ?? 'All',
+                  OrderBy: 'Price',
+                  StarRating: tboData?.starRating ?? 0,
+                  HotelName: '',
+                },
+              } as any;
+
+              const resp = await searchHotels(searchReq as any);
+              const hotelResults = (resp as any)?.HotelResult ?? [];
+              const roomsFromTbo: Array<any> = [];
+              for (const hr of hotelResults) {
+                const hrRooms = hr?.HotelRooms ?? [];
+                for (let i = 0; i < hrRooms.length; i++) {
+                  const room = hrRooms[i];
+                  // Sanitize: DO NOT return booking codes, cancellation policies or vendor IDs
+                  const name = Array.isArray(room?.Name) ? room.Name[0] : room?.Name ?? `${hr.HotelName} Room`;
+                  const price = Number(room?.TotalFare ?? room?.TotalFare ?? hr?.MinCost ?? 0) || 0;
+                  roomsFromTbo.push({
+                    id: `tbo-${hr?.HotelCode ?? hotelCode}-${i}`,
+                    name,
+                    price,
+                    refundable: !!room?.IsRefundable,
+                    mealPlan: room?.MealType ?? null,
+                  });
+                }
+              }
+
+              if (roomsFromTbo.length > 0) {
+                return res.json({ rooms: roomsFromTbo });
+              }
+              console.log('[Microsite] Live TBO search returned no rooms; falling back to mock.');
+            }
+          }
         } catch (liveErr: any) {
           console.error('[Microsite] Live TBO fetch failed, falling back to mock rooms:', liveErr?.message ?? liveErr);
         }
@@ -1132,6 +1189,51 @@ export async function registerRoutes(
     }
   });
 
+  // POST /api/microsite/:eventCode/draft-booking
+  // Create a lightweight, non-sensitive draft booking for microsite flows.
+  app.post("/api/microsite/:eventCode/draft-booking", async (req, res) => {
+    try {
+      const event = await storage.getEventByCode(req.params.eventCode);
+      if (!event || !event.isPublished) return res.status(404).json({ message: "Event not found or not published" });
+
+      const { roomId, roomName, price, nights } = req.body ?? {};
+      if (!roomId || !roomName) return res.status(400).json({ message: "roomId and roomName are required" });
+
+      // Prefer hotel name from event's first hotel booking, otherwise use event name
+      const hotelBookings = await storage.getHotelBookings(event.id);
+      const firstHotel = hotelBookings?.[0];
+      const hotelName = firstHotel?.hotelName ?? event.name ?? 'Hotel';
+
+      // Derive checkIn/checkOut from booking or event if available
+      const checkIn = firstHotel?.checkInDate ?? event.date ?? new Date().toISOString();
+      const checkOut = firstHotel?.checkOutDate ?? new Date(Date.now() + (24 * 60 * 60 * 1000)).toISOString();
+
+      const draftRef = `DRFT-${Date.now().toString(36).toUpperCase()}`;
+
+      const bookingPayload: any = {
+        eventId: event.id,
+        hotelName,
+        checkInDate: new Date(checkIn),
+        checkOutDate: new Date(checkOut),
+        numberOfRooms: 1,
+        tboHotelData: {
+          draft: true,
+          draftRef,
+          selectedRoom: { id: roomId, name: roomName, price: Number(price ?? 0), nights: Number(nights ?? 1) },
+          createdAt: new Date().toISOString(),
+        },
+      };
+
+      const saved = await storage.createHotelBooking(bookingPayload);
+
+      // Return only non-sensitive identifiers
+      res.status(201).json({ draftId: saved.id, draftRef });
+    } catch (err: any) {
+      console.error('[Microsite Draft] Error:', err);
+      res.status(500).json({ message: err.message ?? 'Failed to create draft booking' });
+    }
+  });
+
   // ─── Client Multi-Event Routes ───────────────────────────────────────────────
 
   // GET /api/events/my-client-events — all events where the logged-in client is the host
@@ -1141,10 +1243,15 @@ export async function registerRoutes(
       if (!user || user.role !== "client") {
         return res.status(403).json({ message: "Client access required" });
       }
+      // Primary: events explicitly linked to this client via clientId
+      // Fallback: events matching user's eventCode (in case clientId wasn't set yet)
+      const whereClause = user.eventCode
+        ? or(eq(events.clientId, user.id), eq(events.eventCode, user.eventCode))
+        : eq(events.clientId, user.id);
       const clientEvents = await db
         .select()
         .from(events)
-        .where(eq(events.clientId, user.id));
+        .where(whereClause);
       res.json(clientEvents);
     } catch (err: any) {
       res.status(500).json({ message: err.message ?? "Failed to load events" });
@@ -1173,7 +1280,12 @@ export async function registerRoutes(
       const eventGuests = await storage.getGuests(eventId);
 
       const byLabel = await Promise.all(eventLabels.map(async (label: any) => {
-        const labelGuests = eventGuests.filter(g => g.labelId === label.id);
+        const normalizedLabelName = (label.name ?? "").trim().toLowerCase();
+        const labelGuests = eventGuests.filter((g: any) => {
+          if (g.labelId === label.id) return true;
+          const guestCategory = (g.category ?? "").trim().toLowerCase();
+          return !g.labelId && guestCategory.length > 0 && guestCategory === normalizedLabelName;
+        });
         const guestIds = labelGuests.map(g => g.id);
 
         // Sum approved guestRequests.budgetConsumed for guests in this label
@@ -1281,6 +1393,21 @@ export async function registerRoutes(
     }
   });
 
+  // POST /api/groundteam/no-show/:guestId — mark a guest as no-show
+  app.post("/api/groundteam/no-show/:guestId", async (req, res) => {
+    try {
+      const user = getUser(req);
+      if (!user || (user.role !== "agent" && user.role !== "groundTeam")) {
+        return res.status(403).json({ message: "Only agents or ground team can mark no-shows" });
+      }
+      const guest = await storage.updateGuest(Number(req.params.guestId), { status: "no_show" } as any);
+      if (!guest) return res.status(404).json({ message: "Guest not found" });
+      res.json(guest);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message ?? "No-show update failed" });
+    }
+  });
+
   // GET /api/events/:id/checkin-stats — live check-in stats for ground team dashboard
   app.get("/api/events/:id/checkin-stats", async (req, res) => {
     try {
@@ -1292,13 +1419,15 @@ export async function registerRoutes(
       const arrived = allGuests.filter(g => g.status === "arrived").length;
       const confirmed = allGuests.filter(g => g.status === "confirmed").length;
       const pending = allGuests.filter(g => g.status === "pending").length;
+      const noShow = allGuests.filter(g => g.status === "no_show").length;
 
       res.json({
         total: allGuests.length,
         arrived,
         confirmed,
         pending,
-        notArrived: allGuests.length - arrived,
+        noShow,
+        notArrived: allGuests.length - arrived - noShow,
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message ?? "Failed to fetch check-in stats" });
