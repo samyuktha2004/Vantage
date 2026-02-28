@@ -34,6 +34,14 @@
 - [ ] Flight search UI in EventSetup (tabbed: TBO Search | Manual entry)
 - [ ] Store TBO booking data (JSONB) in hotel_bookings + travel_options tables
 
+#### Credential Strategy (Important)
+
+- [x] **Current (MVP demo):** Use shared/default TBO credentials from server environment variables (`TBO_*`).
+- [ ] **Future (V1):** Pull TBO credentials per agent account/profile after sign-in (agent-scoped credentials, not global defaults).
+- [ ] Add secure credential storage + encryption at rest for agent TBO credentials.
+- [ ] Add fallback order: agent credentials → org credentials → explicit demo default (non-production only).
+- [ ] Add clear UI state in agent settings: "TBO Connected / Missing Credentials".
+
 ### Group Inventory Management (In Progress)
 
 - [ ] `group_inventory` table (rooms blocked/confirmed, seats allocated/confirmed)

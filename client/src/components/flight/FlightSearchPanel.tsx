@@ -145,7 +145,7 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
           CountryCode: "IN",
           CountryName: "India",
           Nationality: "IN",
-          ContactNo: "9999999999",
+          ContactNo: "124-4998999",
           Email: "group@booking.com",
           IsLeadPax: i === 0 && isLead,
           Fare: fare,

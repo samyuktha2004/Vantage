@@ -111,7 +111,9 @@ export default function AgentSignIn() {
                 <button
                   type="button"
                   className="text-sm text-primary hover:underline"
-                  onClick={() => {}}
+                  onClick={() => {
+                    window.location.href = "mailto:support@vantage.travel?subject=Agent%20Password%20Reset";
+                  }}
                   aria-label="Forgot password"
                 >
                   Forgot password?

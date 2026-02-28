@@ -36,6 +36,7 @@ All planned features implemented. Nomination logic intentionally dropped. See "D
 | Event CRUD + publish                  | Auto event codes (e.g. `TINA2026`)                        |
 | TBO hotel search + block confirmation | Live API via `HotelSearchPanel`                           |
 | TBO flight search + seat confirmation | Live API via `FlightSearchPanel`                          |
+| TBO credential mode                   | **Current:** shared/default `TBO_*` env creds (demo)      |
 | Label management                      | VIP, Family, etc. — custom names, free-text               |
 | Perk management                       | `included` / `requestable` / `self_pay` with unit cost    |
 | Label-perk matrix                     | Toggle enabled + `expenseHandledByClient` per tier        |
@@ -113,6 +114,7 @@ All planned features implemented. Nomination logic intentionally dropped. See "D
 | Agent forgot-password flow                                                   | Low      | UI link added on agent sign-in; reset password backend/API/email flow pending                                                                                  |
 | Event decline optional message                                               | Low      | Microsite UI supports an optional decline message; backend support pending                                                                                     |
 | Microsite booking + confirmation UI                                          | Low      | UI-only booking cards and confirmation receipt added to microsite; link to guest booking pages when guest token available; backend/payment integration pending |
+| Agent-specific TBO credentials                                               | Medium   | Today uses shared/default env credentials; planned upgrade is fetching credentials from signed-in agent account/profile                                        |
 
 ---
 

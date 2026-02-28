@@ -128,10 +128,22 @@ export default function GuestConcierge({ token }: { token: string }) {
           <h3 className="font-serif text-xl text-primary mb-2">Need something else?</h3>
           <p className="text-muted-foreground text-sm mb-6">Our dedicated team is here to assist with special arrangements.</p>
           <div className="flex justify-center gap-4">
-            <Button variant="outline" className="gap-2 bg-white">
+            <Button
+              variant="outline"
+              className="gap-2 bg-white"
+              onClick={() => {
+                window.location.href = `mailto:groups@tbo.com?subject=${encodeURIComponent("Concierge support request")}`;
+              }}
+            >
               <Mail className="w-4 h-4" /> Email Concierge
             </Button>
-            <Button variant="outline" className="gap-2 bg-white">
+            <Button
+              variant="outline"
+              className="gap-2 bg-white"
+              onClick={() => {
+                window.location.href = "tel:+91-124-4998999";
+              }}
+            >
               <Phone className="w-4 h-4" /> Call Support
             </Button>
           </div>

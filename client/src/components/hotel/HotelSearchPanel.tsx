@@ -175,6 +175,7 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
           <div className="space-y-1.5">
             <Label>Country</Label>
             <Select
+              value={selectedCountry}
               onValueChange={(v) => {
                 setSelectedCountry(v);
                 setSearchParams((p) => ({ ...p, countryCode: v, cityCode: "" }));
@@ -196,6 +197,7 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
           <div className="space-y-1.5">
             <Label>City</Label>
             <Select
+              value={searchParams.cityCode}
               disabled={!selectedCountry}
               onValueChange={(v) => setSearchParams((p) => ({ ...p, cityCode: v }))}
             >
