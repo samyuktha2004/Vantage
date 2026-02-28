@@ -1,0 +1,51 @@
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+
+# ─── Sensitive / Environment ──────────────────────────────────────────────────
+.env
+.env.local
+.env.production
+.env.*.local
+
+# ─── Credentials / Keys ───────────────────────────────────────────────────────
+*.pem
+*.key
+*.cert
+*.p12
+credentials.json
+secrets.json
+service-account*.json
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+
+# ─── OS / Editor ─────────────────────────────────────────────────────────────
+Thumbs.db
+.vscode/settings.json
+.idea/
+
+# Postman — all collections, environments, globals — keep offline, not in repo
+postman/
+HotelAPI Client.postman_collection 6.json
+*.postman_collection*.json
+*.postman_environment*.json
+*.postman_globals*.json
+postman_environment*.json
+
+# Local editor / environment state
+.local/
+
+# Attachments / exported assets not meant for repo
+attached_assets/
+
+# Drizzle generated migrations (auto-generated, not needed in repo for db:push workflow)
+drizzle/
+
+# Build artifacts
+build/

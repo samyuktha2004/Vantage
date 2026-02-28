@@ -1,0 +1,516 @@
+/**
+ * CheckInDashboard — Mobile-optimised on-site check-in for ground team
+ * Route: /groundteam/:eventId/checkin
+ *
+ * Ground team signs in with agent-issued credentials (scoped to one event).
+ * They see a live guest list, can search by name/ref, and mark guests as arrived.
+ */
+import { useState, useEffect, useRef } from "react";
+import { useRoute, useLocation } from "wouter";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Search,
+  CheckCircle2,
+  Users,
+  Clock,
+  Loader2,
+  QrCode,
+  AlertCircle,
+  Utensils,
+  StickyNote,
+  RefreshCw,
+  MapPin,
+  X,
+  UserPlus,
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { Html5Qrcode } from "html5-qrcode";
+
+async function fetchCheckinStats(eventId: string) {
+  const res = await fetch(`/api/events/${eventId}/checkin-stats`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to load stats");
+  return res.json();
+}
+
+async function fetchGuests(eventId: string) {
+  const res = await fetch(`/api/events/${eventId}/guests`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to load guests");
+  return res.json();
+}
+
+async function markArrived(guestId: number) {
+  const res = await fetch(`/api/groundteam/checkin/${guestId}`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to mark arrived");
+  return res.json();
+}
+
+export default function CheckInDashboard() {
+  const [match, params] = useRoute("/groundteam/:eventId/checkin");
+  const [, navigate] = useLocation();
+  const eventId = params?.eventId ?? "";
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const [search, setSearch] = useState("");
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [showQrScanner, setShowQrScanner] = useState(false);
+  const [qrScannerError, setQrScannerError] = useState("");
+  const qrScannerRef = useRef<Html5Qrcode | null>(null);
+  const qrDivId = "qr-reader";
+
+  // Walk-in registration
+  const [showWalkInForm, setShowWalkInForm] = useState(false);
+  const [walkInName, setWalkInName] = useState("");
+  const [walkInEmail, setWalkInEmail] = useState("");
+  const [walkInPhone, setWalkInPhone] = useState("");
+  const [walkInMeal, setWalkInMeal] = useState("standard");
+
+  const { data: stats, refetch: refetchStats } = useQuery({
+    queryKey: ["checkin-stats", eventId],
+    queryFn: () => fetchCheckinStats(eventId),
+    enabled: !!eventId,
+    refetchInterval: autoRefresh ? 30000 : false,
+  });
+
+  const { data: guests = [], isLoading: guestsLoading, refetch: refetchGuests } = useQuery({
+    queryKey: ["guests-checkin", eventId],
+    queryFn: () => fetchGuests(eventId),
+    enabled: !!eventId,
+    refetchInterval: autoRefresh ? 30000 : false,
+  });
+
+  const arrivedMutation = useMutation({
+    mutationFn: markArrived,
+    onSuccess: () => {
+      toast({ title: "Guest marked as arrived" });
+      queryClient.invalidateQueries({ queryKey: ["guests-checkin", eventId] });
+      queryClient.invalidateQueries({ queryKey: ["checkin-stats", eventId] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const walkInMutation = useMutation({
+    mutationFn: async (data: { name: string; email?: string; phone?: string; mealPreference: string }) => {
+      const res = await fetch(`/api/events/${eventId}/on-spot-register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to register walk-in guest");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: `${walkInName} registered!`,
+        description: `Booking ref: ${data.guest?.bookingRef}`,
+      });
+      setShowWalkInForm(false);
+      setWalkInName(""); setWalkInEmail(""); setWalkInPhone(""); setWalkInMeal("standard");
+      queryClient.invalidateQueries({ queryKey: ["guests-checkin", eventId] });
+      queryClient.invalidateQueries({ queryKey: ["checkin-stats", eventId] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Registration failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // QR scanner: start/stop based on showQrScanner flag
+  useEffect(() => {
+    if (!showQrScanner) {
+      if (qrScannerRef.current) {
+        qrScannerRef.current.stop().catch(() => {}).finally(() => {
+          qrScannerRef.current = null;
+        });
+      }
+      return;
+    }
+
+    // Slight delay to let the DOM element mount
+    const timer = setTimeout(async () => {
+      setQrScannerError("");
+      try {
+        const scanner = new Html5Qrcode(qrDivId);
+        qrScannerRef.current = scanner;
+        await scanner.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          (decodedText) => {
+            // QR code encodes /guest/:token URL — extract the token
+            const tokenMatch = decodedText.match(/\/guest\/([^/?#]+)/);
+            const token = tokenMatch?.[1] ?? decodedText;
+            // Find guest by accessToken
+            const found = (guests as any[]).find(
+              (g: any) => g.accessToken === token || g.bookingRef === token
+            );
+            if (found) {
+              setSearch(found.name ?? token);
+              setShowQrScanner(false);
+              if (found.status !== "arrived") {
+                toast({ title: `Found: ${found.name}`, description: "Tap Arrived to check in." });
+              } else {
+                toast({ title: `${found.name} already checked in`, variant: "default" });
+              }
+            } else {
+              toast({ title: "Guest not found", description: `Token: ${token}`, variant: "destructive" });
+              setShowQrScanner(false);
+            }
+          },
+          () => {} // ignore per-frame decode errors
+        );
+      } catch (err: any) {
+        setQrScannerError(err.message ?? "Could not start camera. Allow camera access and try again.");
+        setShowQrScanner(false);
+      }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [showQrScanner, guests]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      qrScannerRef.current?.stop().catch(() => {});
+    };
+  }, []);
+
+  const filtered = (guests as any[]).filter((g: any) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      g.name?.toLowerCase().includes(q) ||
+      g.email?.toLowerCase().includes(q) ||
+      g.bookingRef?.toLowerCase().includes(q)
+    );
+  });
+
+  const arrived = stats?.arrived ?? 0;
+  const total = stats?.total ?? guests.length;
+  const confirmed = stats?.confirmed ?? 0;
+  const pending = stats?.pending ?? 0;
+  const pct = total > 0 ? Math.round((arrived / total) * 100) : 0;
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="bg-primary text-primary-foreground px-4 py-4 sticky top-0 z-10">
+        <div className="max-w-lg mx-auto">
+          <div className="flex items-center justify-between mb-3">
+            <h1 className="font-serif font-bold text-xl">Check-in</h1>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+                onClick={() => { refetchStats(); refetchGuests(); }}
+              >
+                <RefreshCw className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+                onClick={() => setShowQrScanner(true)}
+              >
+                <QrCode className="w-4 h-4 mr-1" /> Scan
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+                onClick={() => setShowWalkInForm(true)}
+              >
+                <UserPlus className="w-4 h-4 mr-1" /> Walk-in
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+                onClick={() => navigate(`/groundteam/${eventId}/rooming`)}
+              >
+                <MapPin className="w-4 h-4 mr-1" /> Rooms
+              </Button>
+            </div>
+          </div>
+
+          {/* Live stats */}
+          <div className="grid grid-cols-4 gap-2 text-center text-xs">
+            <div className="bg-primary-foreground/10 rounded p-2">
+              <p className="font-bold text-lg">{arrived}</p>
+              <p className="text-primary-foreground/70">Arrived</p>
+            </div>
+            <div className="bg-primary-foreground/10 rounded p-2">
+              <p className="font-bold text-lg">{confirmed}</p>
+              <p className="text-primary-foreground/70">Confirmed</p>
+            </div>
+            <div className="bg-primary-foreground/10 rounded p-2">
+              <p className="font-bold text-lg">{pending}</p>
+              <p className="text-primary-foreground/70">Pending</p>
+            </div>
+            <div className="bg-primary-foreground/10 rounded p-2">
+              <p className="font-bold text-lg">{total}</p>
+              <p className="text-primary-foreground/70">Total</p>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="mt-3">
+            <div className="flex justify-between text-xs text-primary-foreground/70 mb-1">
+              <span>Arrival progress</span>
+              <span>{pct}%</span>
+            </div>
+            <div className="w-full bg-primary-foreground/20 rounded-full h-2">
+              <div
+                className="bg-primary-foreground rounded-full h-2 transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* QR Scanner Overlay */}
+      {showQrScanner && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex flex-col items-center justify-center p-4">
+          <div className="bg-card rounded-xl p-4 w-full max-w-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold flex items-center gap-2">
+                <QrCode className="w-4 h-4" /> Scan Guest QR Code
+              </h3>
+              <button
+                onClick={() => setShowQrScanner(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Point the camera at the guest's QR code from their invitation link.
+            </p>
+            <div id={qrDivId} className="w-full rounded overflow-hidden" />
+            {qrScannerError && (
+              <p className="text-xs text-destructive">{qrScannerError}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Walk-in Registration Form */}
+      {showWalkInForm && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex flex-col items-center justify-center p-4">
+          <div className="bg-card rounded-xl p-5 w-full max-w-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold flex items-center gap-2">
+                <UserPlus className="w-4 h-4" /> Walk-in Registration
+              </h3>
+              <button onClick={() => setShowWalkInForm(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="wi-name">Name *</Label>
+                <Input
+                  id="wi-name"
+                  placeholder="Full name"
+                  value={walkInName}
+                  onChange={(e) => setWalkInName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="wi-email">Email</Label>
+                <Input
+                  id="wi-email"
+                  type="email"
+                  placeholder="email@example.com"
+                  value={walkInEmail}
+                  onChange={(e) => setWalkInEmail(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="wi-phone">Phone</Label>
+                <Input
+                  id="wi-phone"
+                  type="tel"
+                  placeholder="+91 9000000000"
+                  value={walkInPhone}
+                  onChange={(e) => setWalkInPhone(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="wi-meal">Meal Preference</Label>
+                <Select value={walkInMeal} onValueChange={setWalkInMeal}>
+                  <SelectTrigger id="wi-meal">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="standard">Standard</SelectItem>
+                    <SelectItem value="vegetarian">Vegetarian</SelectItem>
+                    <SelectItem value="vegan">Vegan</SelectItem>
+                    <SelectItem value="halal">Halal</SelectItem>
+                    <SelectItem value="kosher">Kosher</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <Button
+              className="w-full"
+              onClick={() => walkInMutation.mutate({ name: walkInName, email: walkInEmail || undefined, phone: walkInPhone || undefined, mealPreference: walkInMeal })}
+              disabled={!walkInName.trim() || walkInMutation.isPending}
+            >
+              {walkInMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <UserPlus className="w-4 h-4 mr-2" />}
+              Register & Check In
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Search */}
+      <div className="max-w-lg mx-auto px-4 py-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by name or booking ref…"
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Guest list */}
+      <div className="max-w-lg mx-auto px-4 pb-8 space-y-3">
+        {guestsLoading && (
+          <div className="flex justify-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
+        {!guestsLoading && filtered.length === 0 && (
+          <div className="text-center py-8 text-muted-foreground text-sm">
+            {search ? "No guests match your search." : "No guests found for this event."}
+          </div>
+        )}
+
+        {filtered.map((guest: any) => {
+          const isArrived = guest.status === "arrived";
+          const isConfirmed = guest.status === "confirmed" || guest.rsvpStatus === "confirmed";
+
+          return (
+            <Card key={guest.id} className={`border ${isArrived ? "border-green-300 bg-green-50/30" : ""}`}>
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold truncate">{guest.name}</p>
+                      {guest.registrationSource === "on_spot" && (
+                        <Badge className="bg-purple-100 text-purple-700 border-purple-300 text-xs">
+                          <UserPlus className="w-3 h-3 mr-1" /> Walk-in
+                        </Badge>
+                      )}
+                      {isArrived && (
+                        <Badge className="bg-green-100 text-green-700 border-green-300 text-xs">
+                          <CheckCircle2 className="w-3 h-3 mr-1" /> Arrived
+                        </Badge>
+                      )}
+                      {!isArrived && isConfirmed && (
+                        <Badge variant="secondary" className="text-xs">Confirmed</Badge>
+                      )}
+                      {!isArrived && !isConfirmed && (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">Pending RSVP</Badge>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                      {guest.bookingRef ?? "—"}
+                    </p>
+
+                    <div className="flex flex-wrap gap-3 mt-2 text-xs text-muted-foreground">
+                      {(guest.mealPreference && guest.mealPreference !== "standard") && (
+                        <span className="flex items-center gap-1 capitalize">
+                          <Utensils className="w-3 h-3" />
+                          {guest.mealPreference}
+                        </span>
+                      )}
+                      {guest.dietaryRestrictions && !guest.mealPreference && (
+                        <span className="flex items-center gap-1">
+                          <Utensils className="w-3 h-3" />
+                          {guest.dietaryRestrictions}
+                        </span>
+                      )}
+                      {guest.arrivalPnr && (
+                        <span className="flex items-center gap-1 font-mono">
+                          PNR: {guest.arrivalPnr}
+                        </span>
+                      )}
+                      {guest.specialRequests && (
+                        <span className="flex items-center gap-1">
+                          <StickyNote className="w-3 h-3" />
+                          {guest.specialRequests}
+                        </span>
+                      )}
+                      {guest.seatAllocation && guest.seatAllocation > 1 && (
+                        <span className="flex items-center gap-1">
+                          <Users className="w-3 h-3" />
+                          Party of {guest.seatAllocation}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {!isArrived && (
+                    <Button
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => arrivedMutation.mutate(guest.id)}
+                      disabled={arrivedMutation.isPending}
+                    >
+                      {arrivedMutation.isPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Arrived</>
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Auto-refresh indicator */}
+      <div className="fixed bottom-4 right-4">
+        <button
+          onClick={() => setAutoRefresh(!autoRefresh)}
+          className={`text-xs flex items-center gap-1 px-2 py-1 rounded-full border ${
+            autoRefresh ? "bg-green-50 border-green-300 text-green-700" : "bg-muted border-border text-muted-foreground"
+          }`}
+        >
+          <Clock className="w-3 h-3" />
+          {autoRefresh ? "Auto-refresh on" : "Auto-refresh off"}
+        </button>
+      </div>
+    </div>
+  );
+}
