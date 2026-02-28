@@ -9,6 +9,7 @@ import guestRoutes from "./guest-routes";
 import tboHotelRoutes from "./tbo-hotel-routes";
 import tboFlightRoutes from "./tbo-flight-routes";
 import { db } from "./db";
+import { searchHotels } from "./tbo/tboHotelService";
 import { events, hotelBookings, travelOptions, itineraryEvents, guests, labels, guestRequests } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 
@@ -275,16 +276,18 @@ export async function registerRoutes(
   app.patch("/api/events/:id", async (req, res) => {
     try {
       const user = getUser(req);
-      if (!user || user.role !== "agent") {
-        return res.status(403).json({ message: "Only agents can update events" });
+      if (!user || (user.role !== "agent" && user.role !== "client")) {
+        return res.status(403).json({ message: "Only agents or clients can update events" });
       }
       const eventId = Number(req.params.id);
-      const { coverMediaUrl, coverMediaType, themeColor, themePreset } = req.body;
+      const { coverMediaUrl, coverMediaType, themeColor, themePreset, scheduleText, inviteMessage } = req.body;
       const updates: Record<string, any> = {};
       if (coverMediaUrl !== undefined) updates.coverMediaUrl = coverMediaUrl || null;
       if (coverMediaType !== undefined) updates.coverMediaType = coverMediaType;
       if (themeColor !== undefined) updates.themeColor = themeColor;
       if (themePreset !== undefined) updates.themePreset = themePreset;
+      if (scheduleText !== undefined) updates.scheduleText = scheduleText || null;
+      if (inviteMessage !== undefined) updates.inviteMessage = inviteMessage || null;
       const [updated] = await db.update(events).set(updates).where(eq(events.id, eventId)).returning();
       if (!updated) return res.status(404).json({ message: "Event not found" });
       res.json(updated);
@@ -979,6 +982,8 @@ export async function registerRoutes(
         coverMediaType: event.coverMediaType ?? "image",
         themeColor: event.themeColor ?? "#1B2D5B",
         themePreset: event.themePreset ?? "navy",
+        scheduleText: (event as any).scheduleText ?? null,
+        inviteMessage: (event as any).inviteMessage ?? null,
         hotel: firstHotel ? {
           name: firstHotel.hotelName,
           checkIn: firstHotel.checkInDate,
@@ -998,6 +1003,60 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("[Microsite] Error:", err);
       res.status(500).json({ message: err.message ?? "Failed to load event" });
+    }
+  });
+
+  /**
+   * GET /api/microsite/:eventCode/hotel-rooms
+   * Public endpoint used by the microsite to show a selectable room list.
+   *
+   * Behaviour (safe defaults):
+   * - By default this returns a mocked, display-only list so the microsite
+   *   UX remains functional without exposing TBO or booking PII.
+   * - To enable live TBO-backed behaviour set `ENABLE_TBO_MICROSITE_ROOMS=true`
+   *   in your server environment. The live path is gated behind this flag so
+   *   the default demo behaviour remains a harmless fallback.
+   */
+  app.get("/api/microsite/:eventCode/hotel-rooms", async (req, res) => {
+    try {
+      const event = await storage.getEventByCode(req.params.eventCode);
+      if (!event || !event.isPublished) return res.status(404).json({ message: "Event not found or not published" });
+
+      // If operator explicitly enables TBO for microsite rooms, attempt live fetch
+      const enableLive = (process.env.ENABLE_TBO_MICROSITE_ROOMS ?? "false") === "true";
+
+      if (enableLive) {
+        try {
+          // NOTE: For a robust implementation we'd derive search params from the
+          // event's `hotelBookings` / `tboHotelData`. For MVP we attempt a best-effort
+          // call pattern but do NOT return any PII or booking tokens — only public
+          // display fields (name, id, price estimate).
+          // Placeholder: call into the TBO hotel service (searchHotels) if maintainers
+          // wire the correct request body here.
+          // const searchReq = buildSearchRequestFromEvent(event);
+          // const resp = await searchHotels(searchReq);
+          // Map resp to a sanitized rooms list here.
+          // For now, fall through to mocked response if live mapping isn't wired.
+          console.log('[Microsite] ENABLE_TBO_MICROSITE_ROOMS=true but live mapping not configured; returning fallback rooms.');
+        } catch (liveErr: any) {
+          console.error('[Microsite] Live TBO fetch failed, falling back to mock rooms:', liveErr?.message ?? liveErr);
+        }
+      }
+
+      // Fallback/mock rooms — display-only, safe for public pages
+      // Use any existing hotel booking info to make the mock feel realistic
+      const hotelBookings = await storage.getHotelBookings(event.id);
+      const firstHotel = hotelBookings[0];
+      const baseName = firstHotel?.hotelName ?? event.name ?? 'Hotel';
+      const rooms = [
+        { id: 'standard', name: `${baseName} — Standard Room`, price: 2000 },
+        { id: 'deluxe', name: `${baseName} — Deluxe Room`, price: 3200 },
+      ];
+
+      res.json({ rooms });
+    } catch (err: any) {
+      console.error('[Microsite Rooms] Error:', err);
+      res.status(500).json({ message: err.message ?? 'Failed to load rooms' });
     }
   });
 

@@ -49,6 +49,8 @@ export default function EventSetup() {
 
   // Step 1 — invite URL (writes to events.coverMediaUrl via PATCH)
   const [inviteUrl, setInviteUrl] = useState("");
+  const [scheduleText, setScheduleText] = useState("");
+  const [inviteMessage, setInviteMessage] = useState("");
 
   // TBO vs Manual mode for hotel step
   const [hotelMode, setHotelMode] = useState<HotelMode>("tbo");
@@ -106,6 +108,10 @@ export default function EventSetup() {
       if (response.ok) {
         const data = await response.json();
         setEventData(data);
+        // Hydrate invite fields from existing event data
+        if (data.coverMediaUrl) setInviteUrl(data.coverMediaUrl);
+        if (data.scheduleText) setScheduleText(data.scheduleText);
+        if (data.inviteMessage) setInviteMessage(data.inviteMessage);
       }
     } catch (error) {
       console.error("Failed to fetch event data", error);
@@ -126,13 +132,17 @@ export default function EventSetup() {
         throw new Error(errorData.message || "Failed to save client details");
       }
 
-      // Persist invite URL to events.coverMediaUrl if provided
-      if (inviteUrl.trim()) {
+      // Persist invite URL, schedule, and invite message to event via PATCH
+      const patchPayload: Record<string, string | null> = {};
+      if (inviteUrl.trim()) patchPayload.coverMediaUrl = inviteUrl.trim();
+      if (scheduleText.trim()) patchPayload.scheduleText = scheduleText.trim();
+      if (inviteMessage.trim()) patchPayload.inviteMessage = inviteMessage.trim();
+      if (Object.keys(patchPayload).length > 0) {
         await fetch(`/api/events/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ coverMediaUrl: inviteUrl.trim() }),
+          body: JSON.stringify(patchPayload),
         });
       }
 
@@ -361,9 +371,39 @@ export default function EventSetup() {
                       onChange={(e) => setInviteUrl(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Paste a Google Drive, Canva, or any URL — shown to guests as "View Invite"
+                      Paste a Google Drive, Canva, or any URL to a PDF, image, or video invite — shown to guests as "View Invite"
                     </p>
                   </div>
+
+                  {/* Schedule — optional rich-text / plain-text */}
+                  <div className="space-y-1.5">
+                    <FormLabel>Event Schedule <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                    <textarea
+                      className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      placeholder={"Day 1 — Arrival & Welcome dinner\nDay 2 — Conference sessions\nDay 3 — Team activities & departure"}
+                      value={scheduleText}
+                      onChange={(e) => setScheduleText(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Paste or type the event schedule — guests see this in their portal
+                    </p>
+                  </div>
+
+                  {/* Fallback invite message — when no media URL is provided */}
+                  {!inviteUrl.trim() && (
+                    <div className="space-y-1.5 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <FormLabel>Personalised Invite Message <span className="text-muted-foreground font-normal">(fallback)</span></FormLabel>
+                      <textarea
+                        className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        placeholder={`Dear Guest,\n\nYou are cordially invited to ${eventData?.name || 'our event'}. We look forward to welcoming you!`}
+                        value={inviteMessage}
+                        onChange={(e) => setInviteMessage(e.target.value)}
+                      />
+                      <p className="text-xs text-amber-700">
+                        No invite link? This text message will be shown to guests instead. Their name is added automatically.
+                      </p>
+                    </div>
+                  )}
 
                   <div className="space-y-4">
                     <FormLabel>Guest Categories</FormLabel>

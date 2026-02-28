@@ -20,6 +20,8 @@ import {
   Sparkles,
   Edit,
   ExternalLink,
+  FileText,
+  ClipboardList,
 } from "lucide-react";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
@@ -116,10 +118,38 @@ export default function GuestDashboard() {
               View Invite
             </a>
           )}
+          {/* Fallback text invite when no media URL is provided */}
+          {!event?.coverMediaUrl && (event?.inviteMessage || event?.name) && (
+            <div className="mt-2 p-4 bg-primary/5 border border-primary/10 rounded-lg text-sm text-center max-w-md mx-auto">
+              <FileText className="w-5 h-5 text-primary mx-auto mb-2" />
+              <p className="text-primary/80 whitespace-pre-line">
+                {event.inviteMessage
+                  ? event.inviteMessage.replace(/\{name\}/gi, guestData.name || 'Guest')
+                  : `Dear ${guestData.name || 'Guest'},\n\nYou are cordially invited to ${event.name}. We look forward to welcoming you!`}
+              </p>
+            </div>
+          )}
         </motion.div>
 
         {/* Quick edit cards */}
         <div className="space-y-3">
+          {/* Event Schedule (if provided) */}
+          {event?.scheduleText && (
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-start gap-3">
+                  <ClipboardList className="w-5 h-5 text-primary mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-medium text-sm mb-2">Event Schedule</p>
+                    <p className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed">
+                      {event.scheduleText}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Step 1 — RSVP */}
           <Card className="border-green-200 bg-green-50/50">
             <CardContent className="pt-4 flex items-center justify-between">

@@ -795,7 +795,7 @@ guestRoutes.post('/api/events/:eventId/on-spot-register', async (req: any, res) 
       .values({
         eventId,
         name,
-        email: email || null,
+        email: email || `walkin-${bookingRef.toLowerCase()}@noemail.local`,
         phone: phone || null,
         bookingRef,
         accessToken,

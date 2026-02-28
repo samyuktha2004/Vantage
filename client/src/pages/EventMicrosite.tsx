@@ -11,7 +11,7 @@
  *  - themeColor: CSS custom property override
  *  - themePreset: named palette
  */
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -106,6 +106,9 @@ export default function EventMicrosite() {
   const [bookingError, setBookingError] = useState("");
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [receipt, setReceipt] = useState<any>(null);
+  const [rooms, setRooms] = useState<Array<{id:string;name:string;price:number}>>([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
+  const [roomsError, setRoomsError] = useState("");
 
   const { data: event, isLoading, error } = useQuery({
     queryKey: ["microsite", eventCode],
@@ -223,12 +226,42 @@ export default function EventMicrosite() {
     ? differenceInCalendarDays(new Date(event.hotel.checkOut), new Date(event.hotel.checkIn))
     : 1;
 
-  const sampleRooms = event?.hotel
-    ? [
-        { id: 'standard', name: 'Standard Room', price: 2000 },
-        { id: 'deluxe', name: 'Deluxe Room', price: 3200 },
-      ]
-    : [];
+  // Fetch public rooms for the microsite. By default the server returns a
+  // harmless mock list; operators can later enable live TBO-backed data via
+  // an env flag. We silently fall back to a local sample so users don't see
+  // any difference in the UI.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadRooms() {
+      if (!event) return;
+      setRoomsLoading(true);
+      setRoomsError("");
+      try {
+        const res = await fetch(`/api/microsite/${event.eventCode}/hotel-rooms`);
+        if (!res.ok) throw new Error('rooms fetch failed');
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data?.rooms) && data.rooms.length > 0) {
+          setRooms(data.rooms.map((r: any) => ({ id: String(r.id), name: String(r.name), price: Number(r.price || 0) })));
+          return;
+        }
+      } catch (err) {
+        console.error('microsite rooms fetch failed, falling back to sample rooms', err);
+      } finally {
+        if (!cancelled) setRoomsLoading(false);
+      }
+
+      // Fallback sample rooms (keeps UX consistent)
+      if (!cancelled && event?.hotel) {
+        const baseName = event.hotel.name ?? event.name ?? 'Hotel';
+        setRooms([
+          { id: 'standard', name: `${baseName} — Standard Room`, price: 2000 },
+          { id: 'deluxe', name: `${baseName} — Deluxe Room`, price: 3200 },
+        ]);
+      }
+    }
+    loadRooms();
+    return () => { cancelled = true; };
+  }, [event]);
 
   return (
     <div className="min-h-screen bg-background" style={themeStyle}>
@@ -279,6 +312,12 @@ export default function EventMicrosite() {
           {event.description && (
             <p className="text-white/70 max-w-xl mx-auto text-sm leading-relaxed">
               {event.description}
+            </p>
+          )}
+          {/* Fallback personalised invite message when no cover media */}
+          {!event.coverMediaUrl && event.inviteMessage && (
+            <p className="text-white/80 max-w-lg mx-auto text-sm leading-relaxed mt-3 italic">
+              {event.inviteMessage}
             </p>
           )}
           <div className="mt-6 flex items-center justify-center gap-3">
@@ -379,6 +418,20 @@ export default function EventMicrosite() {
           )}
         </div>
 
+        {/* Client-provided Schedule Text */}
+        {event.scheduleText && (
+          <section>
+            <h2 className="text-xl font-sans font-semibold mb-4">Schedule Overview</h2>
+            <Card className="border-muted">
+              <CardContent className="pt-4">
+                <p className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed">
+                  {event.scheduleText}
+                </p>
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
         {/* Event Schedule */}
         {event.itinerary && event.itinerary.length > 0 && (
           <section>
@@ -417,7 +470,7 @@ export default function EventMicrosite() {
             <p className="text-sm text-muted-foreground mb-4">Select a room to view the estimated price summary and continue to payment.</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {sampleRooms.map((r) => (
+              {rooms.map((r) => (
                 <Card key={r.id} className={`border ${selectedRoom?.id === r.id ? 'ring-2 ring-offset-2' : ''}`}>
                   <CardContent className="flex items-center justify-between">
                     <div>

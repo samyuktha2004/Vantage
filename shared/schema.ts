@@ -24,6 +24,9 @@ export const events = pgTable("events", {
   coverMediaType: text("cover_media_type").default("image"), // "image" | "video"
   themeColor: text("theme_color").default("#1B2D5B"), // Hex primary color
   themePreset: text("theme_preset").default("navy"), // Named preset: "navy" | "rose" | "forest" | "slate" | "custom"
+  // Client-provided schedule / invite content
+  scheduleText: text("schedule_text"), // Rich-text or plain schedule pasted by client
+  inviteMessage: text("invite_message"), // Fallback personalised text invite when no media uploaded
 });
 
 // Client Details
