@@ -164,6 +164,9 @@ export const guests = pgTable("guests", {
   // "invited"   → pre-imported by agent
   // "on_spot"   → added by ground team at the door (MICE walk-in)
   // "self_reg"  → registered via microsite "Register Interest" CTA
+  // Flight status (Sprint 6) — set manually by ground team
+  flightStatus: text("flight_status").default("unknown"),
+  // "unknown" | "on_time" | "delayed" | "landed" | "cancelled"
 });
 
 // Family Members (for Rooming)

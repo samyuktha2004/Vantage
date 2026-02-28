@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
+import { CheckCircle } from "lucide-react";
 import { Navigation } from "@/components/Navigation";
 
 interface GuestLayoutProps {
@@ -39,13 +40,13 @@ export function GuestLayout({ children, step, token }: GuestLayoutProps) {
                 <div key={s.num} className="flex items-center gap-3">
                   <div className={`
                     w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all duration-300
-                    ${isActive 
-                      ? "bg-primary text-white shadow-lg shadow-primary/20 scale-110" 
-                      : isCompleted 
-                        ? "bg-secondary text-primary" 
+                    ${isActive
+                      ? "bg-primary text-white shadow-lg shadow-primary/20 scale-110"
+                      : isCompleted
+                        ? "bg-primary/20 text-primary"
                         : "bg-muted text-muted-foreground"}
                   `}>
-                    {s.num}
+                    {isCompleted ? <CheckCircle className="w-4 h-4" /> : s.num}
                   </div>
                   <span className={`text-sm font-medium ${isActive ? "text-primary" : "text-muted-foreground"}`}>
                     {s.label}

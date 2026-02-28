@@ -141,30 +141,19 @@ export default function GuestRSVP({ token }: { token: string }) {
           </p>
         </div>
 
-        {/* Seat Allocation Card */}
-        <Card className="border-primary/20">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-primary" />
-              Your Allocation
-            </CardTitle>
-            <CardDescription>
-              Reserved for <strong>{guestData.name}</strong> + {maxSeats - 1} guest(s)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between p-4 bg-secondary/20 rounded-lg">
-              <div>
-                <div className="text-2xl font-bold text-primary">{maxSeats}</div>
-                <div className="text-sm text-muted-foreground">Allocated Seats</div>
+        {/* Event info — no seat count announced */}
+        {guestData.event.location && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span><strong className="text-foreground">{guestData.event.location}</strong></span>
+                {guestData.event.date && (
+                  <span>{new Date(guestData.event.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                )}
               </div>
-              <div>
-                <div className="text-2xl font-bold text-accent">{currentSeats}</div>
-                <div className="text-sm text-muted-foreground">Selected</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* RSVP Status Selection */}
         <Card>
@@ -209,7 +198,7 @@ export default function GuestRSVP({ token }: { token: string }) {
                 <CardHeader>
                   <CardTitle>Who's coming with you?</CardTitle>
                   <CardDescription>
-                    You can add up to {maxSeats - 1} additional guest(s)
+                    Add the names of any guests joining you
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -301,9 +290,21 @@ export default function GuestRSVP({ token }: { token: string }) {
                     </div>
                   )}
 
-                  {!canAddMore && familyMembers.length > 0 && (
-                    <div className="text-sm text-muted-foreground text-center p-2 bg-muted/30 rounded-lg">
-                      You've reached your maximum allocation of {maxSeats} seats
+                  {!canAddMore && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                      <p className="text-sm text-amber-800 font-medium">Need more seats?</p>
+                      <p className="text-xs text-amber-700">Your current allocation is {maxSeats} seat{maxSeats !== 1 ? "s" : ""}. To add more guests, let the event team know and they'll check availability.</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-amber-400 text-amber-800 hover:bg-amber-100"
+                        onClick={() => {
+                          // Add a placeholder entry that becomes a pending request on submit
+                          setFamilyMembers([...familyMembers, { name: "", relationship: "Additional Guest (pending approval)", age: undefined }]);
+                        }}
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> Request an Extra Seat
+                      </Button>
                     </div>
                   )}
                 </CardContent>

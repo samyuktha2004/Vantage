@@ -695,11 +695,12 @@ guestRoutes.put('/api/guest/:token/travel-prefs', async (req, res) => {
       arrivalMode,
       departureMode,
       journeyNotes,
+      specialRequests,
     } = req.body;
 
     const guest = await getGuestByToken(token);
 
-    const VALID_MODES = ['group_flight', 'own_flight', 'train', 'other'];
+    const VALID_MODES = ['group_flight', 'own_flight', 'train', 'other', 'local'];
     const updates: any = {};
     if (typeof selfManageArrival === 'boolean') updates.selfManageArrival = selfManageArrival;
     if (typeof selfManageDeparture === 'boolean') updates.selfManageDeparture = selfManageDeparture;
@@ -708,7 +709,10 @@ guestRoutes.put('/api/guest/:token/travel-prefs', async (req, res) => {
     if (originCity !== undefined) updates.originCity = originCity;
     if (arrivalMode && VALID_MODES.includes(arrivalMode)) updates.arrivalMode = arrivalMode;
     if (departureMode && VALID_MODES.includes(departureMode)) updates.departureMode = departureMode;
-    if (journeyNotes !== undefined) updates.specialRequests = journeyNotes; // reuse specialRequests for "other" mode notes
+    // Merge journey notes (arrangements) + specialRequests (agent note) into one field
+    const combinedNotes = [journeyNotes, specialRequests].filter(Boolean).join('\n\n');
+    if (combinedNotes) updates.specialRequests = combinedNotes;
+    else if (journeyNotes === '' || specialRequests === '') updates.specialRequests = '';
     if (partialStayCheckIn !== undefined) updates.partialStayCheckIn = partialStayCheckIn ? new Date(partialStayCheckIn) : null;
     if (partialStayCheckOut !== undefined) updates.partialStayCheckOut = partialStayCheckOut ? new Date(partialStayCheckOut) : null;
 

@@ -202,6 +202,7 @@ export function useUpdateTravelPrefs(token: string) {
       arrivalMode?: string;
       departureMode?: string;
       journeyNotes?: string;
+      specialRequests?: string;
       partialStayCheckIn?: Date;
       partialStayCheckOut?: Date;
     }) => {

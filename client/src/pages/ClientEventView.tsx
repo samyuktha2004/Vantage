@@ -296,6 +296,9 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
               <Card key={req.id}>
                 <CardContent className="p-4 flex items-center justify-between">
                   <div>
+                    {req.guest?.name && (
+                      <p className="text-xs text-muted-foreground font-medium mb-0.5">{req.guest.name}</p>
+                    )}
                     <p className="font-medium text-sm capitalize">{req.addonType ?? req.type}</p>
                     {req.notes && <p className="text-xs text-muted-foreground mt-0.5">{req.notes}</p>}
                   </div>

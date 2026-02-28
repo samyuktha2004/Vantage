@@ -7,12 +7,19 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Loader2, Users, Utensils, Printer, Plane, UserPlus } from "lucide-react";
+import { ArrowLeft, Loader2, Users, Utensils, Printer, Plane, Train, Bus, UserPlus, Download } from "lucide-react";
+import { exportManifestToExcel } from "@/lib/excelParser";
 
 async function fetchGuests(eventId: string) {
   const res = await fetch(`/api/events/${eventId}/guests`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed");
   return res.json();
+}
+
+function TransportIcon({ mode }: { mode?: string }) {
+  if (mode === "train") return <Train className="w-3 h-3" />;
+  if (mode === "other") return <Bus className="w-3 h-3" />;
+  return <Plane className="w-3 h-3" />;
 }
 
 export default function RoomingList() {
@@ -46,14 +53,24 @@ export default function RoomingList() {
           </Button>
           <h1 className="font-serif font-bold text-xl">Rooming List</h1>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
-          onClick={() => window.print()}
-        >
-          <Printer className="w-4 h-4 mr-1" /> Print
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+            onClick={() => exportManifestToExcel(confirmed, "Rooming List")}
+          >
+            <Download className="w-4 h-4 mr-1" /> Export
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+            onClick={() => window.print()}
+          >
+            <Printer className="w-4 h-4 mr-1" /> Print
+          </Button>
+        </div>
       </div>
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-3">
@@ -108,21 +125,21 @@ export default function RoomingList() {
                     )}
                     {guest.arrivalPnr && (
                       <p className="text-xs text-blue-700 flex items-center gap-1 font-mono">
-                        <Plane className="w-3 h-3" />
-                        Arrival PNR: {guest.arrivalPnr}
+                        <TransportIcon mode={guest.arrivalMode} />
+                        {guest.arrivalMode === "train" ? "Train PNR:" : "Arrival PNR:"} {guest.arrivalPnr}
                         {guest.originCity && <span className="text-muted-foreground font-sans">(from {guest.originCity})</span>}
                       </p>
                     )}
                     {!guest.arrivalPnr && guest.originCity && (
                       <p className="text-xs text-blue-700 flex items-center gap-1">
-                        <Plane className="w-3 h-3" />
+                        <TransportIcon mode={guest.arrivalMode} />
                         From: {guest.originCity}
                       </p>
                     )}
                     {guest.departurePnr && (
                       <p className="text-xs text-blue-700 flex items-center gap-1 font-mono">
-                        <Plane className="w-3 h-3 rotate-180" />
-                        Departure PNR: {guest.departurePnr}
+                        <TransportIcon mode={guest.departureMode} />
+                        {guest.departureMode === "train" ? "Train PNR (dep):" : "Departure PNR:"} {guest.departurePnr}
                       </p>
                     )}
                     {guest.seatAllocation && guest.seatAllocation > 1 && (

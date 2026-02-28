@@ -113,3 +113,47 @@ export function exportGuestsToExcel(guests: GuestRow[], filename: string = 'gues
   XLSX.utils.book_append_sheet(wb, ws, 'Guests');
   XLSX.writeFile(wb, filename);
 }
+
+/**
+ * Export full ground team manifest to Excel with all operational columns
+ */
+export function exportManifestToExcel(guests: any[], eventName: string = 'Event'): void {
+  const TRANSPORT_LABELS: Record<string, string> = {
+    group_flight: "Group Transport",
+    own_flight: "Own Flight",
+    train: "Train",
+    other: "Bus / Car / Other",
+    local: "Local / In City",
+  };
+
+  const rows = guests.map((g, i) => ({
+    "#": i + 1,
+    "Name": g.name ?? "",
+    "Booking Ref": g.bookingRef ?? "",
+    "Label / Tier": g.label ?? "",
+    "Status": g.status ?? "",
+    "Seats": g.confirmedSeats ?? 1,
+    "Transport Mode": TRANSPORT_LABELS[g.arrivalMode] ?? g.arrivalMode ?? "",
+    "Origin": g.originCity ?? "",
+    "Arrival PNR": g.arrivalPnr ?? "",
+    "Departure PNR": g.departurePnr ?? "",
+    "Meal Preference": g.mealPreference ?? "",
+    "Extended Check-in": g.extendedCheckIn ?? "",
+    "Extended Check-out": g.extendedCheckOut ?? "",
+    "Emergency Contact": g.emergencyContactName ?? "",
+    "Emergency Phone": g.emergencyContactPhone ?? "",
+    "Source": g.registrationSource === "on_spot" ? "Walk-in" : g.registrationSource === "self_reg" ? "Self-reg" : "Invited",
+    "Notes / Arrangements": g.specialRequests ?? "",
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(rows);
+
+  // Style header row width
+  const colWidths = [4, 24, 14, 14, 12, 6, 18, 12, 14, 14, 16, 16, 16, 20, 16, 10, 30];
+  ws['!cols'] = colWidths.map(w => ({ wch: w }));
+
+  // Mark walk-ins with a note (XLSX doesn't support cell colors easily without enterprise lib)
+  XLSX.utils.book_append_sheet(wb, ws, 'Manifest');
+  XLSX.writeFile(wb, `${eventName.replace(/[^a-z0-9]/gi, '_')}_Manifest.xlsx`);
+}

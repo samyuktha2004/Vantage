@@ -13,13 +13,14 @@ import { Loader2, Plane, Hotel, ArrowRight, AlertTriangle, Train, Bus } from "lu
 import { toast } from "@/hooks/use-toast";
 import { format, differenceInCalendarDays } from "date-fns";
 
-type TransportMode = "group_flight" | "own_flight" | "train" | "other";
+type TransportMode = "group_flight" | "own_flight" | "train" | "other" | "local";
 
-const TRANSPORT_OPTIONS: { value: TransportMode; label: string; icon: React.ReactNode; pnrLabel?: string }[] = [
-  { value: "group_flight", label: "Group transport", icon: <Plane className="w-4 h-4" /> },
-  { value: "own_flight",   label: "Own flight",       icon: <Plane className="w-4 h-4" />, pnrLabel: "Flight PNR / Booking ref" },
-  { value: "train",        label: "Train",             icon: <Train className="w-4 h-4" />, pnrLabel: "Train PNR / Booking no." },
-  { value: "other",        label: "Other (bus / car / cab)", icon: <Bus className="w-4 h-4" /> },
+const TRANSPORT_OPTIONS: { value: TransportMode; label: string; subtext: string; icon: React.ReactNode }[] = [
+  { value: "group_flight", label: "Group transport",          subtext: "Join the group — covered by the event", icon: <Plane className="w-4 h-4" /> },
+  { value: "own_flight",   label: "Own flight",               subtext: "I'm booking my own flight",              icon: <Plane className="w-4 h-4" /> },
+  { value: "train",        label: "Train",                    subtext: "I'm travelling by rail",                 icon: <Train className="w-4 h-4" /> },
+  { value: "other",        label: "Bus / car / cab",          subtext: "I'll arrange my own ground transport",   icon: <Bus className="w-4 h-4" /> },
+  { value: "local",        label: "I'm in the city / local",  subtext: "Already there — no travel needed",       icon: <Bus className="w-4 h-4" /> },
 ];
 
 export default function GuestTravelPrefs({ token }: { token: string }) {
@@ -30,14 +31,17 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
 
   // Arrival
   const [arrivalMode, setArrivalMode] = useState<TransportMode>("group_flight");
-  const [arrivalPnr, setArrivalPnr] = useState("");
   const [originCity, setOriginCity] = useState("");
+  const [needsArrivalPickup, setNeedsArrivalPickup] = useState(false);
   const [arrivalNotes, setArrivalNotes] = useState("");
 
   // Departure
   const [departureMode, setDepartureMode] = useState<TransportMode>("group_flight");
-  const [departurePnr, setDeparturePnr] = useState("");
+  const [needsDepartureDropoff, setNeedsDepartureDropoff] = useState(false);
   const [departureNotes, setDepartureNotes] = useState("");
+
+  // Note for the event team
+  const [agentNote, setAgentNote] = useState("");
 
   // Hotel
   const [hotelMode, setHotelMode] = useState<"group" | "own" | "partial">("group");
@@ -52,13 +56,8 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
       if (guestData.departureMode) setDepartureMode(guestData.departureMode as TransportMode);
       else if (guestData.selfManageDeparture) setDepartureMode("own_flight");
 
-      if (guestData.arrivalPnr) setArrivalPnr(guestData.arrivalPnr);
-      if (guestData.departurePnr) setDeparturePnr(guestData.departurePnr);
       if (guestData.originCity) setOriginCity(guestData.originCity);
-      if (guestData.specialRequests) {
-        // journey notes for "other" mode are stored in specialRequests
-        setArrivalNotes(guestData.specialRequests);
-      }
+      if (guestData.specialRequests) setAgentNote(guestData.specialRequests);
 
       if (guestData.extendedCheckIn || guestData.extendedCheckOut) {
         setHotelMode("partial");
@@ -105,16 +104,22 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
   const isDepartureSelfManaged = departureMode !== "group_flight";
 
   const handleSave = async () => {
+    // Build journey notes from arrangements + notes + agent message
+    const arrivalArrangements = needsArrivalPickup ? "Needs pickup" : "";
+    const departureArrangements = needsDepartureDropoff ? "Needs drop-off" : "";
+    const arrivalPart = [arrivalArrangements, arrivalNotes].filter(Boolean).join(" — ");
+    const departurePart = [departureArrangements, departureNotes].filter(Boolean).join(" — ");
+    const journeyNotes = [arrivalPart, departurePart].filter(Boolean).join(" | ");
+
     try {
       await updateTravelPrefs.mutateAsync({
         selfManageArrival: isArrivalSelfManaged,
         selfManageDeparture: isDepartureSelfManaged,
         arrivalMode,
         departureMode,
-        arrivalPnr: (arrivalMode === "own_flight" || arrivalMode === "train") ? arrivalPnr : undefined,
-        departurePnr: (departureMode === "own_flight" || departureMode === "train") ? departurePnr : undefined,
-        originCity: originCity || undefined,
-        journeyNotes: arrivalMode === "other" ? arrivalNotes : (departureMode === "other" ? departureNotes : undefined),
+        originCity: (arrivalMode === "group_flight" || arrivalMode === "own_flight" || arrivalMode === "train") ? (originCity || undefined) : undefined,
+        journeyNotes: journeyNotes || undefined,
+        specialRequests: agentNote || undefined,
       });
 
       if (hotelMode === "partial" && partialCheckIn && partialCheckOut) {
@@ -148,8 +153,9 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
     id,
     groupLabel,
     groupSubtext,
-    pnr,
-    onPnrChange,
+    needsPickup,
+    onNeedsPickupChange,
+    pickupLabel,
     notes,
     onNotesChange,
     city,
@@ -161,15 +167,15 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
     id: string;
     groupLabel?: React.ReactNode;
     groupSubtext?: string;
-    pnr: string;
-    onPnrChange: (v: string) => void;
+    needsPickup: boolean;
+    onNeedsPickupChange: (v: boolean) => void;
+    pickupLabel: string;
     notes: string;
     onNotesChange: (v: string) => void;
     city?: string;
     onCityChange?: (v: string) => void;
     showCity?: boolean;
   }) {
-    const selected = TRANSPORT_OPTIONS.find((o) => o.value === value);
     return (
       <>
         <RadioGroup
@@ -177,106 +183,62 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
           onValueChange={(v) => onChange(v as TransportMode)}
           className="space-y-2"
         >
-          {/* Group transport option */}
-          <div className={`flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${value === "group_flight" ? "border-primary bg-primary/5" : "border-border"}`}>
-            <RadioGroupItem value="group_flight" id={`${id}-group`} className="mt-0.5" />
-            <label htmlFor={`${id}-group`} className="cursor-pointer flex-1">
-              <div className="font-medium flex items-center gap-2">
-                <Plane className="w-4 h-4" /> Group transport
-              </div>
-              {groupSubtext ? (
-                <div className="text-sm text-muted-foreground mt-1">{groupSubtext}</div>
-              ) : (
-                <div className="text-sm text-muted-foreground mt-1">Group travel details will be shared by the event team</div>
-              )}
-              {groupLabel}
-            </label>
-          </div>
-
-          {/* Own flight */}
-          <div className={`flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${value === "own_flight" ? "border-primary bg-primary/5" : "border-border"}`}>
-            <RadioGroupItem value="own_flight" id={`${id}-own_flight`} className="mt-0.5" />
-            <label htmlFor={`${id}-own_flight`} className="cursor-pointer flex-1">
-              <div className="font-medium flex items-center gap-2">
-                <Plane className="w-4 h-4" /> Own flight
-              </div>
-              <div className="text-sm text-muted-foreground mt-1">Self-pay — you manage your own flight</div>
-            </label>
-          </div>
-
-          {/* Train */}
-          <div className={`flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${value === "train" ? "border-primary bg-primary/5" : "border-border"}`}>
-            <RadioGroupItem value="train" id={`${id}-train`} className="mt-0.5" />
-            <label htmlFor={`${id}-train`} className="cursor-pointer flex-1">
-              <div className="font-medium flex items-center gap-2">
-                <Train className="w-4 h-4" /> Train
-              </div>
-              <div className="text-sm text-muted-foreground mt-1">Self-pay — travelling by rail</div>
-            </label>
-          </div>
-
-          {/* Other */}
-          <div className={`flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${value === "other" ? "border-primary bg-primary/5" : "border-border"}`}>
-            <RadioGroupItem value="other" id={`${id}-other`} className="mt-0.5" />
-            <label htmlFor={`${id}-other`} className="cursor-pointer flex-1">
-              <div className="font-medium flex items-center gap-2">
-                <Bus className="w-4 h-4" /> Other (bus / car / cab)
-              </div>
-              <div className="text-sm text-muted-foreground mt-1">Self-pay — you arrange your own transport</div>
-            </label>
-          </div>
+          {TRANSPORT_OPTIONS.map((opt) => (
+            <div
+              key={opt.value}
+              className={`flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${value === opt.value ? "border-primary bg-primary/5" : "border-border"}`}
+            >
+              <RadioGroupItem value={opt.value} id={`${id}-${opt.value}`} className="mt-0.5" />
+              <label htmlFor={`${id}-${opt.value}`} className="cursor-pointer flex-1">
+                <div className="font-medium flex items-center gap-2">
+                  {opt.icon} {opt.label}
+                </div>
+                <div className="text-sm text-muted-foreground mt-0.5">
+                  {opt.value === "group_flight" && groupSubtext ? groupSubtext : opt.subtext}
+                </div>
+                {opt.value === "group_flight" && groupLabel}
+              </label>
+            </div>
+          ))}
         </RadioGroup>
 
-        {/* Context fields based on mode */}
-        {(value === "own_flight" || value === "train") && (
-          <div className="pt-2 space-y-3">
-            {showCity && onCityChange && (
-              <div className="space-y-2">
-                <Label>Your departure city / airport</Label>
-                <Input
-                  placeholder="e.g., Mumbai, BOM"
-                  value={city ?? ""}
-                  onChange={(e) => onCityChange(e.target.value)}
-                  className="max-w-xs"
-                />
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label>{selected?.pnrLabel ?? "PNR / Booking Reference"} (optional)</Label>
-              <Input
-                placeholder="e.g., ABC123"
-                value={pnr}
-                onChange={(e) => onPnrChange(e.target.value)}
-                className="max-w-xs"
-              />
-              <p className="text-xs text-muted-foreground">Share your reference so the ground team can coordinate</p>
-            </div>
-          </div>
-        )}
-
-        {value === "group_flight" && showCity && onCityChange && (
+        {/* Departure city (for group/own/train) */}
+        {(value === "group_flight" || value === "own_flight" || value === "train") && showCity && onCityChange && (
           <div className="pt-2 space-y-2">
-            <Label>Your departure city / airport</Label>
+            <Label>Your departure city / airport (optional)</Label>
             <Input
               placeholder="e.g., Mumbai, BOM"
               value={city ?? ""}
               onChange={(e) => onCityChange(e.target.value)}
               className="max-w-xs"
             />
-            <p className="text-xs text-muted-foreground">Helps the team coordinate the right group flight for you</p>
+            <p className="text-xs text-muted-foreground">Helps the team coordinate</p>
           </div>
         )}
 
-        {value === "other" && (
-          <div className="pt-2 space-y-2">
-            <Label>Journey notes (optional)</Label>
-            <Textarea
-              placeholder="e.g., taking a bus from Pune, arriving around 2pm"
-              value={notes}
-              onChange={(e) => onNotesChange(e.target.value)}
-              rows={2}
-              className="max-w-sm"
-            />
+        {/* Arrangements (for self-managed, non-local modes) */}
+        {value !== "group_flight" && value !== "local" && (
+          <div className="pt-3 space-y-3 p-4 bg-muted/30 rounded-lg border">
+            <p className="text-sm font-medium">Do you need any arrangements from the event team?</p>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={needsPickup}
+                onChange={(e) => onNeedsPickupChange(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-sm">{pickupLabel}</span>
+            </label>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Other notes (optional)</Label>
+              <Textarea
+                placeholder="e.g., arriving from Pune, around 2pm"
+                value={notes}
+                onChange={(e) => onNotesChange(e.target.value)}
+                rows={2}
+                className="max-w-sm text-sm"
+              />
+            </div>
           </div>
         )}
       </>
@@ -312,8 +274,9 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
                   : undefined
               }
               groupLabel={<Badge variant="secondary" className="mt-2 text-xs">Host covered</Badge>}
-              pnr={arrivalPnr}
-              onPnrChange={setArrivalPnr}
+              needsPickup={needsArrivalPickup}
+              onNeedsPickupChange={setNeedsArrivalPickup}
+              pickupLabel="I'd like a pickup from the airport / station"
               notes={arrivalNotes}
               onNotesChange={setArrivalNotes}
               city={originCity}
@@ -343,8 +306,9 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
                   : undefined
               }
               groupLabel={<Badge variant="secondary" className="mt-2 text-xs">Host covered</Badge>}
-              pnr={departurePnr}
-              onPnrChange={setDeparturePnr}
+              needsPickup={needsDepartureDropoff}
+              onNeedsPickupChange={setNeedsDepartureDropoff}
+              pickupLabel="I'd like a drop-off to the airport / station"
               notes={departureNotes}
               onNotesChange={setDepartureNotes}
               showCity={false}
@@ -456,6 +420,22 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
                 )}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Note for the event team */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Anything else to tell the team? (optional)</CardTitle>
+            <CardDescription>Special arrangements, dietary needs, accessibility requirements, or anything on your mind</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              placeholder="e.g., I'll be arriving from a connecting cruise, please be flexible on pickup timing."
+              value={agentNote}
+              onChange={(e) => setAgentNote(e.target.value)}
+              rows={3}
+            />
           </CardContent>
         </Card>
 

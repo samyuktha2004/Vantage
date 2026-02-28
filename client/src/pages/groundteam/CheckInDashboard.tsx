@@ -35,9 +35,40 @@ import {
   MapPin,
   X,
   UserPlus,
+  Plane,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Html5Qrcode } from "html5-qrcode";
+
+function flightStatusBorderClass(status?: string | null): string {
+  switch (status) {
+    case "landed":    return "border-l-4 border-l-green-500";
+    case "on_time":   return "border-l-4 border-l-blue-500";
+    case "delayed":   return "border-l-4 border-l-amber-500";
+    case "cancelled": return "border-l-4 border-l-red-500";
+    default:          return "";
+  }
+}
+
+function flightStatusBadgeClass(status?: string | null): string {
+  switch (status) {
+    case "landed":    return "bg-green-100 text-green-700";
+    case "on_time":   return "bg-blue-100 text-blue-700";
+    case "delayed":   return "bg-amber-100 text-amber-700";
+    case "cancelled": return "bg-red-100 text-red-700";
+    default:          return "bg-muted text-muted-foreground";
+  }
+}
+
+function flightStatusLabel(status?: string | null): string {
+  switch (status) {
+    case "landed":    return "Landed";
+    case "on_time":   return "On time";
+    case "delayed":   return "Delayed";
+    case "cancelled": return "Cancelled";
+    default:          return "Unknown";
+  }
+}
 
 async function fetchCheckinStats(eventId: string) {
   const res = await fetch(`/api/events/${eventId}/checkin-stats`, { credentials: "include" });
@@ -130,6 +161,25 @@ export default function CheckInDashboard() {
     },
     onError: (err: Error) => {
       toast({ title: "Registration failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const flightStatusMutation = useMutation({
+    mutationFn: async ({ guestId, flightStatus }: { guestId: number; flightStatus: string }) => {
+      const res = await fetch(`/api/events/${eventId}/guests/${guestId}/flight-status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ flightStatus }),
+      });
+      if (!res.ok) throw new Error("Failed to update flight status");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["guests-checkin", eventId] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error updating flight status", description: err.message, variant: "destructive" });
     },
   });
 
@@ -417,7 +467,7 @@ export default function CheckInDashboard() {
           const isConfirmed = guest.status === "confirmed" || guest.rsvpStatus === "confirmed";
 
           return (
-            <Card key={guest.id} className={`border ${isArrived ? "border-green-300 bg-green-50/30" : ""}`}>
+            <Card key={guest.id} className={`border ${isArrived ? "border-green-300 bg-green-50/30" : flightStatusBorderClass(guest.flightStatus)}`}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -460,7 +510,13 @@ export default function CheckInDashboard() {
                       )}
                       {guest.arrivalPnr && (
                         <span className="flex items-center gap-1 font-mono">
-                          PNR: {guest.arrivalPnr}
+                          <Plane className="w-3 h-3" />
+                          {guest.arrivalPnr}
+                          {guest.flightStatus && guest.flightStatus !== "unknown" && (
+                            <span className={`ml-0.5 text-xs px-1.5 py-0.5 rounded-full font-sans font-medium ${flightStatusBadgeClass(guest.flightStatus)}`}>
+                              {flightStatusLabel(guest.flightStatus)}
+                            </span>
+                          )}
                         </span>
                       )}
                       {guest.specialRequests && (
@@ -475,7 +531,38 @@ export default function CheckInDashboard() {
                           Party of {guest.seatAllocation}
                         </span>
                       )}
+                      {guest.emergencyContactName && (
+                        <span className="flex items-center gap-1 text-red-600 font-medium">
+                          <AlertCircle className="w-3 h-3" />
+                          SOS: {guest.emergencyContactName}{guest.emergencyContactPhone ? ` · ${guest.emergencyContactPhone}` : ""}
+                        </span>
+                      )}
                     </div>
+
+                    {/* Flight status control — only when guest has a PNR (flying in) */}
+                    {guest.arrivalPnr && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Plane className="w-3 h-3 text-muted-foreground shrink-0" />
+                        <span className="text-xs text-muted-foreground">Flight:</span>
+                        <Select
+                          value={guest.flightStatus ?? "unknown"}
+                          onValueChange={(val) =>
+                            flightStatusMutation.mutate({ guestId: guest.id, flightStatus: val })
+                          }
+                        >
+                          <SelectTrigger className="h-6 text-xs w-32 py-0">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="unknown">Unknown</SelectItem>
+                            <SelectItem value="on_time">On time</SelectItem>
+                            <SelectItem value="delayed">Delayed</SelectItem>
+                            <SelectItem value="landed">Landed</SelectItem>
+                            <SelectItem value="cancelled">Cancelled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
 
                   {!isArrived && (

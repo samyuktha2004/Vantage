@@ -1167,6 +1167,117 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/events/:id/manifest — full guest manifest for Excel download
+  app.get("/api/events/:id/manifest", async (req, res) => {
+    try {
+      const user = getUser(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const eventId = Number(req.params.id);
+      const event = await storage.getEvent(eventId);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      const allGuests = await storage.getGuests(eventId);
+      const labels = await storage.getLabels(eventId);
+      const labelMap = Object.fromEntries(labels.map(l => [l.id, l.name]));
+      const manifestGuests = allGuests.map(g => ({
+        name: g.name,
+        bookingRef: g.bookingRef,
+        label: g.labelId ? (labelMap[g.labelId] ?? "") : "",
+        status: g.status,
+        confirmedSeats: g.confirmedSeats ?? 1,
+        arrivalMode: g.arrivalMode ?? "group_flight",
+        originCity: g.originCity ?? "",
+        arrivalPnr: g.arrivalPnr ?? "",
+        departurePnr: g.departurePnr ?? "",
+        mealPreference: g.mealPreference ?? "",
+        extendedCheckIn: g.partialStayCheckIn ? new Date(g.partialStayCheckIn).toISOString().split("T")[0] : "",
+        extendedCheckOut: g.partialStayCheckOut ? new Date(g.partialStayCheckOut).toISOString().split("T")[0] : "",
+        emergencyContactName: g.emergencyContactName ?? "",
+        emergencyContactPhone: g.emergencyContactPhone ?? "",
+        registrationSource: g.registrationSource ?? "invited",
+        specialRequests: g.specialRequests ?? "",
+      }));
+      res.json({ eventName: event.name, guests: manifestGuests });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message ?? "Failed to generate manifest" });
+    }
+  });
+
+  // GET /api/events/:id/inventory/status — EWS: utilisation + alerts for hotel/flight blocks
+  app.get("/api/events/:id/inventory/status", async (req, res) => {
+    try {
+      const user = getUser(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const eventId = Number(req.params.id);
+      const inventory = await storage.getGroupInventory(eventId);
+      const allGuests = await storage.getGuests(eventId);
+      const confirmedGuests = allGuests.filter(g => g.status === "confirmed" || g.status === "arrived").length;
+
+      const hotelAlerts = inventory
+        .filter(inv => inv.inventoryType === "hotel")
+        .map(inv => {
+          const blocked = inv.roomsBlocked ?? 0;
+          const utilized = inv.roomsConfirmed ?? 0;
+          const available = Math.max(0, blocked - utilized);
+          const utilizationPct = blocked > 0 ? Math.round((utilized / blocked) * 100) : 0;
+          const severity = utilizationPct >= 90 ? "critical" : utilizationPct >= 70 ? "warning" : "ok";
+          return {
+            hotelName: inv.notes ?? `Hotel block #${inv.id}`,
+            roomsBlocked: blocked,
+            roomsConfirmed: utilized,
+            roomsAvailable: available,
+            utilizationPct,
+            severity,
+            message: severity === "critical"
+              ? `Only ${available} room${available !== 1 ? "s" : ""} remaining — act now`
+              : severity === "warning"
+              ? `${utilizationPct}% of rooms confirmed — ${available} still available`
+              : `${available} rooms available`,
+          };
+        });
+
+      const flightInventory = inventory.filter(inv => inv.inventoryType === "flight");
+      const flightAlerts = flightInventory.map(inv => {
+        const seatsBlocked = inv.seatsAllocated ?? 0;
+        const seatsConfirmed = inv.seatsConfirmed ?? 0;
+        const utilizationPct = seatsBlocked > 0 ? Math.round((seatsConfirmed / seatsBlocked) * 100) : 0;
+        const severity = utilizationPct >= 90 ? "critical" : utilizationPct >= 70 ? "warning" : "ok";
+        return {
+          severity,
+          seatsBlocked,
+          seatsConfirmed,
+          utilizationPct,
+          message: `Flight block ${utilizationPct}% utilized — ${Math.max(0, seatsBlocked - seatsConfirmed)} seats remaining`,
+        };
+      });
+
+      res.json({ hotelAlerts, flightAlerts });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message ?? "Failed to fetch inventory status" });
+    }
+  });
+
+  // PATCH /api/events/:eventId/guests/:guestId/flight-status — ground team sets flight status
+  app.patch("/api/events/:eventId/guests/:guestId/flight-status", async (req, res) => {
+    try {
+      const user = getUser(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const guestId = Number(req.params.guestId);
+      const { flightStatus } = req.body;
+      const VALID_STATUSES = ["unknown", "on_time", "delayed", "landed", "cancelled"];
+      if (!VALID_STATUSES.includes(flightStatus)) {
+        return res.status(400).json({ message: "Invalid flight status" });
+      }
+      const [updated] = await db
+        .update(guests)
+        .set({ flightStatus })
+        .where(eq(guests.id, guestId))
+        .returning();
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message ?? "Failed to update flight status" });
+    }
+  });
+
   // Register guest portal routes
   app.use(guestRoutes);
 

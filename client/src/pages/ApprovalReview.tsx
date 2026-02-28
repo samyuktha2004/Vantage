@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { DashboardLayout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, CheckCircle, XCircle, Clock, CreditCard, User, FileText, DollarSign, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, Clock, CreditCard, User, FileText, DollarSign, AlertCircle, CheckCheck } from "lucide-react";
 import { useRequests, useUpdateRequest } from "@/hooks/use-requests";
 import { useEvent } from "@/hooks/use-events";
 import { useGuests } from "@/hooks/use-guests";
@@ -30,13 +30,17 @@ export default function ApprovalReview() {
   const [reviewNotes, setReviewNotes] = useState("");
   const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [reviewAction, setReviewAction] = useState<"approve" | "reject">("approve");
+  const [showBulkDialog, setShowBulkDialog] = useState(false);
+  const [bulkApproving, setBulkApproving] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState(0);
 
   const pendingRequests = requests?.filter(r => r.status === 'pending') || [];
   const approvedRequests = requests?.filter(r => r.status === 'approved') || [];
   const rejectedRequests = requests?.filter(r => r.status === 'rejected') || [];
-  
+
   // Real budget consumed from approved requests
   const totalBudgetConsumed = approvedRequests.reduce((sum: number, r: any) => sum + (r.budgetConsumed ?? 0), 0);
+  const totalPendingBudget = pendingRequests.reduce((sum: number, r: any) => sum + (r.budgetConsumed ?? 0), 0);
 
   const handleReviewClick = (request: any, action: "approve" | "reject") => {
     setSelectedRequest(request);
@@ -78,6 +82,24 @@ export default function ApprovalReview() {
       description: "Payment integration coming soon",
     });
     // navigate(`/events/${eventId}/payment`);
+  };
+
+  const handleBulkApprove = async () => {
+    setBulkApproving(true);
+    setBulkProgress(0);
+    let approved = 0;
+    for (const req of pendingRequests) {
+      try {
+        await updateRequest.mutateAsync({ id: req.id, status: "approved" });
+        approved++;
+        setBulkProgress(approved);
+      } catch {
+        // continue even if one fails
+      }
+    }
+    setBulkApproving(false);
+    setShowBulkDialog(false);
+    toast({ title: `${approved} request${approved !== 1 ? "s" : ""} approved` });
   };
 
   if (eventLoading || requestsLoading) {
@@ -173,7 +195,19 @@ export default function ApprovalReview() {
         {/* Pending Requests Section */}
         {pendingRequests.length > 0 && (
           <div className="space-y-4">
-            <h2 className="text-2xl font-serif text-primary">Pending Requests</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-serif text-primary">Pending Requests</h2>
+              {pendingRequests.length > 1 && (
+                <Button
+                  size="sm"
+                  className="bg-green-600 hover:bg-green-700"
+                  onClick={() => setShowBulkDialog(true)}
+                >
+                  <CheckCheck className="w-4 h-4 mr-1" />
+                  Approve All ({pendingRequests.length})
+                </Button>
+              )}
+            </div>
             <div className="space-y-3">
               {pendingRequests.map((request: any) => (
                 <motion.div
@@ -363,6 +397,37 @@ export default function ApprovalReview() {
             )}
           </CardContent>
         </Card>
+
+        {/* Bulk Approve Dialog */}
+        <Dialog open={showBulkDialog} onOpenChange={setShowBulkDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Approve All Pending Requests</DialogTitle>
+              <DialogDescription>
+                This will approve <strong>{pendingRequests.length}</strong> pending request{pendingRequests.length !== 1 ? "s" : ""}.
+                {totalPendingBudget > 0 && (
+                  <span> Total budget deducted: <strong>₹{totalPendingBudget.toLocaleString('en-IN')}</strong></span>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowBulkDialog(false)} disabled={bulkApproving}>
+                Cancel
+              </Button>
+              <Button
+                className="bg-green-600 hover:bg-green-700"
+                onClick={handleBulkApprove}
+                disabled={bulkApproving}
+              >
+                {bulkApproving ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Approving {bulkProgress}/{pendingRequests.length}…</>
+                ) : (
+                  <><CheckCheck className="w-4 h-4 mr-1" />Approve All</>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Review Dialog */}
         <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>

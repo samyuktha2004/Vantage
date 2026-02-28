@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useEvent } from "@/hooks/use-events";
 import { useRoute, useLocation } from "wouter";
 import ClientEventView from "./ClientEventView";
-import { Loader2, Users, Tag, Gift, Inbox, Upload, FileSpreadsheet, Download, Eye, Edit, Plus, Trash2, Settings, FileDown, CheckSquare, BarChart3, Hotel, Plane, AlertTriangle, Globe, UserPlus } from "lucide-react";
+import { Loader2, Users, Tag, Gift, Inbox, Upload, FileSpreadsheet, Download, Eye, Edit, Plus, Trash2, Settings, FileDown, CheckSquare, BarChart3, Hotel, Plane, AlertTriangle, Globe, UserPlus, Copy } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import { useRequests } from "@/hooks/use-requests";
 import { useHotelBookings } from "@/hooks/use-hotel-bookings";
 import { format } from "date-fns";
 import { useState } from "react";
-import { parseExcelFile, parseCSVFile, generateGuestListTemplate } from "@/lib/excelParser";
+import { parseExcelFile, parseCSVFile, generateGuestListTemplate, exportManifestToExcel } from "@/lib/excelParser";
 import { generateEventReport } from "@/lib/reportGenerator";
 import { useToast } from "@/hooks/use-toast";
 import { GuestLinkManager } from "@/components/GuestLinkManager";
@@ -57,6 +57,16 @@ export default function EventDetails() {
   const { data: requests } = useRequests(id);
   const { data: hotelBookings } = useHotelBookings(id);
   const deleteGuest = useDeleteGuest();
+  const { data: inventoryStatus } = useQuery({
+    queryKey: ['inventory-status', id],
+    queryFn: async () => {
+      const res = await fetch(`/api/events/${id}/inventory/status`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!id,
+    staleTime: 30000,
+  });
   
   // Debug logging
   console.log('[DEBUG] Event ID:', id);
@@ -401,6 +411,18 @@ export default function EventDetails() {
     }
   };
 
+  const handleDownloadManifest = async () => {
+    try {
+      const res = await fetch(`/api/events/${id}/manifest`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to generate manifest");
+      const data = await res.json();
+      exportManifestToExcel(data.guests, data.eventName);
+      toast({ title: "Manifest downloaded!", description: `${data.guests.length} guests exported` });
+    } catch (error: any) {
+      toast({ title: "Download failed", description: error.message, variant: "destructive" });
+    }
+  };
+
   const handleDownloadReport = () => {
     try {
       generateEventReport({
@@ -547,9 +569,22 @@ export default function EventDetails() {
                 Publish Event
               </Button>
             ) : (
-              <span className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-md font-medium">
-                <Globe className="w-3.5 h-3.5" /> Published
-              </span>
+              <>
+                <span className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-md font-medium">
+                  <Globe className="w-3.5 h-3.5" /> Published
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/event/${event.eventCode}`);
+                    toast({ title: "Link copied!", description: `Invite link for ${event.eventCode} copied to clipboard` });
+                  }}
+                >
+                  <Copy className="w-3 h-3" /> Copy invite link
+                </Button>
+              </>
             )}
             <Button
               size="sm"
@@ -727,7 +762,7 @@ export default function EventDetails() {
 
         <TabsContent value="guests" className="space-y-4">
           {/* Import Section */}
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid md:grid-cols-3 gap-4">
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -753,6 +788,22 @@ export default function EventDetails() {
               <CardContent>
                 <Input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileUpload} disabled={uploading} />
                 {uploading && <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="w-3 h-3 animate-spin" />Processing...</div>}
+              </CardContent>
+            </Card>
+
+            <Card className="border-emerald-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <FileDown className="w-4 h-4 text-emerald-600" />
+                  Ground Team Manifest
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Button onClick={handleDownloadManifest} variant="outline" className="w-full border-emerald-300 text-emerald-700 hover:bg-emerald-50">
+                  <Download className="w-4 h-4 mr-2" />
+                  Download Manifest
+                </Button>
+                <p className="text-xs text-muted-foreground mt-2">Full Excel with PNR, meal, room, emergency contacts</p>
               </CardContent>
             </Card>
           </div>
@@ -1212,6 +1263,33 @@ export default function EventDetails() {
 
         {/* ── Inventory Tab ── */}
         <TabsContent value="inventory" className="space-y-4">
+          {/* EWS — Inventory Early Warning System */}
+          {inventoryStatus && (
+            <>
+              {inventoryStatus.hotelAlerts?.filter((a: any) => a.severity !== "ok").map((alert: any, i: number) => (
+                <div key={i} className={`flex items-start gap-3 p-4 rounded-lg border ${alert.severity === "critical" ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"}`}>
+                  <AlertTriangle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${alert.severity === "critical" ? "text-red-600" : "text-amber-600"}`} />
+                  <div>
+                    <p className={`font-semibold text-sm ${alert.severity === "critical" ? "text-red-800" : "text-amber-800"}`}>
+                      {alert.hotelName} — {alert.utilizationPct}% utilized
+                    </p>
+                    <p className={`text-xs mt-0.5 ${alert.severity === "critical" ? "text-red-700" : "text-amber-700"}`}>{alert.message}</p>
+                  </div>
+                </div>
+              ))}
+              {inventoryStatus.flightAlerts?.filter((a: any) => a.severity !== "ok").map((alert: any, i: number) => (
+                <div key={i} className={`flex items-start gap-3 p-4 rounded-lg border ${alert.severity === "critical" ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"}`}>
+                  <AlertTriangle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${alert.severity === "critical" ? "text-red-600" : "text-amber-600"}`} />
+                  <div>
+                    <p className={`font-semibold text-sm ${alert.severity === "critical" ? "text-red-800" : "text-amber-800"}`}>
+                      Flight Block — {alert.utilizationPct}% utilized
+                    </p>
+                    <p className={`text-xs mt-0.5 ${alert.severity === "critical" ? "text-red-700" : "text-amber-700"}`}>{alert.message}</p>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
           <InventoryTab eventId={id} />
         </TabsContent>
 
