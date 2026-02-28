@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, ArrowRight, Check, Loader2, Zap, PenLine, CheckCircle2, Plus, X, Plane, TrainFront, Car, Bus, Ship } from "lucide-react";
@@ -38,6 +39,7 @@ type ClientDetailsFormValues = z.infer<typeof clientDetailsSchema>;
 type HotelBookingFormValues = z.infer<typeof hotelBookingSchema>;
 
 type HotelMode = "tbo" | "manual";
+type CommissionType = "amount" | "percentage";
 
 export default function EventSetup() {
   const { id } = useParams();
@@ -55,6 +57,9 @@ export default function EventSetup() {
   // TBO vs Manual mode for hotel step
   const [hotelMode, setHotelMode] = useState<HotelMode>("tbo");
   const [hotelBooked, setHotelBooked] = useState(false);
+  const [hotelBaseRate, setHotelBaseRate] = useState(0);
+  const [hotelCommissionType, setHotelCommissionType] = useState<CommissionType>("amount");
+  const [hotelCommissionValue, setHotelCommissionValue] = useState(0);
 
   // Step 3 — multi-transport state
   interface BookedTransport {
@@ -74,8 +79,19 @@ export default function EventSetup() {
   const [manualTo, setManualTo] = useState("");
   const [manualDate, setManualDate] = useState("");
   const [manualReturn, setManualReturn] = useState("");
+  const [manualBaseFare, setManualBaseFare] = useState(0);
+  const [manualCommissionType, setManualCommissionType] = useState<CommissionType>("amount");
+  const [manualCommissionValue, setManualCommissionValue] = useState(0);
   const [isSavingManual, setIsSavingManual] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(true);
+
+  const computeClientRate = (base: number, commissionType: CommissionType, commissionValue: number) => {
+    if (!base || base <= 0) return 0;
+    const commission = commissionType === "percentage"
+      ? Math.round((base * Math.max(commissionValue, 0)) / 100)
+      : Math.max(commissionValue, 0);
+    return Math.max(base + commission, 0);
+  };
 
   const clientForm = useForm<ClientDetailsFormValues>({
     resolver: zodResolver(clientDetailsSchema),
@@ -219,6 +235,9 @@ export default function EventSetup() {
       if (!checkOutDate || isNaN(checkOutDate.getTime())) {
         throw new Error("Invalid check-out date");
       }
+      if (checkOutDate <= checkInDate) {
+        throw new Error("Check-out date must be after check-in date");
+      }
 
       const payload = {
         hotelName: data.hotelName,
@@ -226,6 +245,12 @@ export default function EventSetup() {
         eventId: Number(id),
         checkInDate: checkInDate.toISOString(),
         checkOutDate: checkOutDate.toISOString(),
+        baseRate: hotelBaseRate > 0 ? hotelBaseRate : null,
+        commissionType: hotelCommissionType,
+        commissionValue: hotelCommissionValue > 0 ? hotelCommissionValue : 0,
+        clientFacingRate: hotelBaseRate > 0
+          ? computeClientRate(hotelBaseRate, hotelCommissionType, hotelCommissionValue)
+          : null,
       };
 
       const response = await fetch(`/api/events/${id}/hotel-booking`, {
@@ -285,6 +310,12 @@ export default function EventSetup() {
         fromLocation: manualFrom,
         toLocation: manualTo,
         departureDate: depDate.toISOString(),
+        baseFare: manualBaseFare > 0 ? manualBaseFare : null,
+        commissionType: manualCommissionType,
+        commissionValue: manualCommissionValue > 0 ? manualCommissionValue : 0,
+        clientFacingFare: manualBaseFare > 0
+          ? computeClientRate(manualBaseFare, manualCommissionType, manualCommissionValue)
+          : null,
       };
       if (manualReturn) {
         const retDate = new Date(manualReturn + "T00:00:00");
@@ -630,7 +661,20 @@ export default function EventSetup() {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Check-in Date</FormLabel>
-                            <FormControl><Input type="date" {...field} /></FormControl>
+                            <FormControl>
+                              <Input
+                                type="date"
+                                {...field}
+                                onChange={(e) => {
+                                  const nextCheckIn = e.target.value;
+                                  field.onChange(nextCheckIn);
+                                  const currentCheckOut = hotelForm.getValues("checkOutDate");
+                                  if (currentCheckOut && nextCheckIn && new Date(currentCheckOut) <= new Date(nextCheckIn)) {
+                                    hotelForm.setValue("checkOutDate", "");
+                                  }
+                                }}
+                              />
+                            </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -641,7 +685,13 @@ export default function EventSetup() {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Check-out Date</FormLabel>
-                            <FormControl><Input type="date" {...field} /></FormControl>
+                            <FormControl>
+                              <Input
+                                type="date"
+                                min={hotelForm.watch("checkInDate") || undefined}
+                                {...field}
+                              />
+                            </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -660,6 +710,45 @@ export default function EventSetup() {
                         </FormItem>
                       )}
                     />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Base Rate (₹)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={hotelBaseRate || ""}
+                          onChange={(e) => setHotelBaseRate(Number(e.target.value) || 0)}
+                          placeholder="e.g. 7000"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Commission Type</Label>
+                        <Select value={hotelCommissionType} onValueChange={(v) => setHotelCommissionType(v as CommissionType)}>
+                          <SelectTrigger className="bg-white text-gray-900 border-input">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white text-gray-900 border-input">
+                            <SelectItem className="bg-white text-gray-900 data-[highlighted]:bg-gray-100 data-[state=checked]:bg-primary/10" value="amount">Amount (₹)</SelectItem>
+                            <SelectItem className="bg-white text-gray-900 data-[highlighted]:bg-gray-100 data-[state=checked]:bg-primary/10" value="percentage">Percentage (%)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Commission Value</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={hotelCommissionValue || ""}
+                          onChange={(e) => setHotelCommissionValue(Number(e.target.value) || 0)}
+                          placeholder={hotelCommissionType === "percentage" ? "e.g. 12" : "e.g. 800"}
+                        />
+                      </div>
+                    </div>
+                    {hotelBaseRate > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Client-facing rate: ₹{computeClientRate(hotelBaseRate, hotelCommissionType, hotelCommissionValue).toLocaleString("en-IN")}
+                      </p>
+                    )}
                     <div className="flex justify-between">
                       <Button type="button" variant="outline" onClick={() => setCurrentStep(1)}>
                         <ArrowLeft className="w-4 h-4 mr-2" /> Back
@@ -830,6 +919,46 @@ export default function EventSetup() {
                           <Input type="date" value={manualReturn} onChange={(e) => setManualReturn(e.target.value)} />
                         </div>
                       </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="space-y-1.5">
+                          <Label>Base Fare (₹)</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={manualBaseFare || ""}
+                            onChange={(e) => setManualBaseFare(Number(e.target.value) || 0)}
+                            placeholder="e.g. 5500"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Commission Type</Label>
+                          <Select value={manualCommissionType} onValueChange={(v) => setManualCommissionType(v as CommissionType)}>
+                            <SelectTrigger className="bg-white text-gray-900 border-input">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white text-gray-900 border-input">
+                              <SelectItem className="bg-white text-gray-900 data-[highlighted]:bg-gray-100 data-[state=checked]:bg-primary/10" value="amount">Amount (₹)</SelectItem>
+                              <SelectItem className="bg-white text-gray-900 data-[highlighted]:bg-gray-100 data-[state=checked]:bg-primary/10" value="percentage">Percentage (%)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Commission Value</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={manualCommissionValue || ""}
+                            onChange={(e) => setManualCommissionValue(Number(e.target.value) || 0)}
+                            placeholder={manualCommissionType === "percentage" ? "e.g. 10" : "e.g. 500"}
+                          />
+                        </div>
+                      </div>
+                      {manualBaseFare > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Client-facing fare: ₹{computeClientRate(manualBaseFare, manualCommissionType, manualCommissionValue).toLocaleString("en-IN")}
+                        </p>
+                      )}
 
                       <Button onClick={handleSaveManualTransport} disabled={isSavingManual} className="w-full">
                         {isSavingManual ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving…</> : "Add Transport"}

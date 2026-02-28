@@ -49,6 +49,10 @@ export const hotelBookings = pgTable("hotel_bookings", {
   checkInDate: timestamp("check_in_date").notNull(),
   checkOutDate: timestamp("check_out_date").notNull(),
   numberOfRooms: integer("number_of_rooms").notNull(),
+  baseRate: integer("base_rate"),
+  commissionType: text("commission_type").default("amount"), // "amount" | "percentage"
+  commissionValue: integer("commission_value").default(0),
+  clientFacingRate: integer("client_facing_rate"),
   // TBO API data — populated when booked via TBO Hotel API (null for manual entries)
   tboHotelData: jsonb("tbo_hotel_data"),
 });
@@ -62,6 +66,10 @@ export const travelOptions = pgTable("travel_options", {
   returnDate: timestamp("return_date"),
   fromLocation: text("from_location"),
   toLocation: text("to_location"),
+  baseFare: integer("base_fare"),
+  commissionType: text("commission_type").default("amount"), // "amount" | "percentage"
+  commissionValue: integer("commission_value").default(0),
+  clientFacingFare: integer("client_facing_fare"),
   // TBO API data — populated when booked via TBO Air API (null for manual entries)
   tboFlightData: jsonb("tbo_flight_data"),
 });
@@ -95,6 +103,10 @@ export const perks = pgTable("perks", {
   name: text("name").notNull(),
   description: text("description"),
   type: text("type").notNull(), // e.g., 'transport', 'accommodation', 'meal', 'activity'
+  baseCost: integer("base_cost"),
+  commissionType: text("commission_type").default("amount"), // "amount" | "percentage"
+  commissionValue: integer("commission_value").default(0),
+  clientFacingRate: integer("client_facing_rate"),
   unitCost: integer("unit_cost").notNull().default(0), // Cost in paise. 0 = free/always included
   pricingType: text("pricing_type").notNull().default("requestable"), // "included" | "requestable" | "self_pay"
   currency: text("currency").notNull().default("INR"),

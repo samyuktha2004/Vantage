@@ -470,7 +470,7 @@ export default function Dashboard() {
               <Link href={`/events/${event.id}`}>
                 <div className="cursor-pointer">
                   <h3 className="text-xl font-bold text-primary mb-2 line-clamp-1">{event.name}</h3>
-                  
+
                   <div className="space-y-2 mt-auto text-sm text-muted-foreground">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4" />

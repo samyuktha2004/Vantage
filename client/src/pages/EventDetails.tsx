@@ -24,6 +24,7 @@ import { generateEventReport } from "@/lib/reportGenerator";
 import { useToast } from "@/hooks/use-toast";
 import { GuestLinkManager } from "@/components/GuestLinkManager";
 import { CapacityAlert } from "@/components/CapacityAlert";
+import { RsvpBreakdownCard } from "@/components/RsvpBreakdownCard";
 
 export default function EventDetails() {
   const [match, params] = useRoute("/events/:id");
@@ -85,7 +86,17 @@ export default function EventDetails() {
   const [showLabelDialog, setShowLabelDialog] = useState(false);
 
   // Perk management state
-  const [newPerkData, setNewPerkData] = useState({ name: "", description: "", type: "", unitCost: 0, pricingType: "requestable" });
+  const [newPerkData, setNewPerkData] = useState({
+    name: "",
+    description: "",
+    type: "",
+    unitCost: 0,
+    baseCost: 0,
+    commissionType: "amount",
+    commissionValue: 0,
+    clientFacingRate: 0,
+    pricingType: "requestable"
+  });
   const [isAddingPerk, setIsAddingPerk] = useState(false);
   const [showPerkDialog, setShowPerkDialog] = useState(false);
   
@@ -297,7 +308,17 @@ export default function EventDetails() {
       if (!response.ok) throw new Error('Failed to create perk');
       
       toast({ title: "Perk created", description: `${newPerkData.name} has been added` });
-      setNewPerkData({ name: "", description: "", type: "", unitCost: 0, pricingType: "requestable" });
+      setNewPerkData({
+        name: "",
+        description: "",
+        type: "",
+        unitCost: 0,
+        baseCost: 0,
+        commissionType: "amount",
+        commissionValue: 0,
+        clientFacingRate: 0,
+        pricingType: "requestable"
+      });
       setShowPerkDialog(false);
       window.location.reload(); // Refresh to show new perk
     } catch (error: any) {
@@ -471,6 +492,9 @@ export default function EventDetails() {
       </DashboardLayout>
     );
   }
+
+  const allGuests = (guests ?? []) as any[];
+  const pendingRequestsCount = (requests ?? []).filter((r: any) => r.status === 'pending').length;
 
   return (
     <DashboardLayout>
@@ -693,7 +717,7 @@ export default function EventDetails() {
         </div>
         <div className="bg-white p-4 rounded-xl border border-border/50 shadow-sm">
           <div className="text-muted-foreground text-xs uppercase mb-1">Pending Requests</div>
-          <div className="text-2xl font-serif text-accent-foreground">{requests?.filter(r => r.status === 'pending').length || 0}</div>
+          <div className="text-2xl font-serif text-accent-foreground">{pendingRequestsCount}</div>
         </div>
         <div className="bg-white p-4 rounded-xl border border-border/50 shadow-sm">
           <div className="text-muted-foreground text-xs uppercase mb-1">VIP Labels</div>
@@ -703,6 +727,10 @@ export default function EventDetails() {
           <div className="text-muted-foreground text-xs uppercase mb-1">Active Perks</div>
           <div className="text-2xl font-serif text-primary">{perks?.length || 0}</div>
         </div>
+      </div>
+
+      <div className="mb-8">
+        <RsvpBreakdownCard guests={allGuests} title="RSVP Breakdown" />
       </div>
 
       {/* Quick Actions */}
@@ -1181,17 +1209,66 @@ export default function EventDetails() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="perkUnitCost">Unit Cost (₹)</Label>
+                    <Label htmlFor="perkBaseCost">Base Cost (₹)</Label>
                     <Input
-                      id="perkUnitCost"
+                      id="perkBaseCost"
                       type="number"
                       min={0}
                       placeholder="e.g., 1500"
-                      value={newPerkData.unitCost || ""}
-                      onChange={(e) => setNewPerkData({ ...newPerkData, unitCost: Number(e.target.value) || 0 })}
+                      value={newPerkData.baseCost || ""}
+                      onChange={(e) => {
+                        const baseCost = Number(e.target.value) || 0;
+                        const commission = newPerkData.commissionType === "percentage"
+                          ? Math.round((baseCost * (newPerkData.commissionValue || 0)) / 100)
+                          : (newPerkData.commissionValue || 0);
+                        const clientRate = Math.max(baseCost + commission, 0);
+                        setNewPerkData({ ...newPerkData, baseCost, clientFacingRate: clientRate, unitCost: clientRate });
+                      }}
                     />
-                    <p className="text-xs text-muted-foreground mt-1">0 = included at no cost</p>
+                    <p className="text-xs text-muted-foreground mt-1">Base supplier cost before commission</p>
                   </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="perkCommissionType">Commission Type</Label>
+                      <select
+                        id="perkCommissionType"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                        value={newPerkData.commissionType}
+                        onChange={(e) => {
+                          const commissionType = e.target.value;
+                          const baseCost = newPerkData.baseCost || 0;
+                          const commission = commissionType === "percentage"
+                            ? Math.round((baseCost * (newPerkData.commissionValue || 0)) / 100)
+                            : (newPerkData.commissionValue || 0);
+                          const clientRate = Math.max(baseCost + commission, 0);
+                          setNewPerkData({ ...newPerkData, commissionType, clientFacingRate: clientRate, unitCost: clientRate });
+                        }}
+                      >
+                        <option value="amount">Amount (₹)</option>
+                        <option value="percentage">Percentage (%)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <Label htmlFor="perkCommissionValue">Commission Value</Label>
+                      <Input
+                        id="perkCommissionValue"
+                        type="number"
+                        min={0}
+                        placeholder={newPerkData.commissionType === "percentage" ? "e.g., 12" : "e.g., 400"}
+                        value={newPerkData.commissionValue || ""}
+                        onChange={(e) => {
+                          const commissionValue = Number(e.target.value) || 0;
+                          const baseCost = newPerkData.baseCost || 0;
+                          const commission = newPerkData.commissionType === "percentage"
+                            ? Math.round((baseCost * commissionValue) / 100)
+                            : commissionValue;
+                          const clientRate = Math.max(baseCost + commission, 0);
+                          setNewPerkData({ ...newPerkData, commissionValue, clientFacingRate: clientRate, unitCost: clientRate });
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Client/guest visible edited rate is calculated and stored; not shown to agent cards.</p>
                   <div>
                     <Label htmlFor="perkPricingType">Pricing Type</Label>
                     <select
@@ -1228,9 +1305,13 @@ export default function EventDetails() {
                       <CardDescription>{perk.description}</CardDescription>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0 ml-4">
-                      {perk.unitCost > 0 && (
-                        <span className="text-sm font-semibold text-primary">₹{perk.unitCost.toLocaleString()}</span>
-                      )}
+                      {(perk.baseCost || perk.commissionValue) ? (
+                        <span className="text-xs text-muted-foreground text-right">
+                          Base ₹{(perk.baseCost ?? 0).toLocaleString("en-IN")} + {perk.commissionType === "percentage" ? `${perk.commissionValue ?? 0}%` : `₹${(perk.commissionValue ?? 0).toLocaleString("en-IN")}`} commission
+                        </span>
+                      ) : perk.unitCost > 0 ? (
+                        <span className="text-xs text-muted-foreground">Cost configured</span>
+                      ) : null}
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                         perk.pricingType === "included" ? "bg-green-100 text-green-700" :
                         perk.pricingType === "self_pay" ? "bg-blue-100 text-blue-700" :

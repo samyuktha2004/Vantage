@@ -31,7 +31,7 @@ export default function GuestConcierge({ token }: { token: string }) {
         type: 'perk_request',
         addonType: perk.name,
         perkId: perk.id,
-        budgetConsumed: perk.unitCost ?? 0,
+        budgetConsumed: perk.clientFacingRate ?? perk.unitCost ?? 0,
       });
       toast({
         title: "Request Sent",

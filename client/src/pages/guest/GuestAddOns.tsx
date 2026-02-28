@@ -29,6 +29,7 @@ interface Perk {
   description?: string;
   pricingType: "included" | "requestable" | "self_pay";
   unitCost: number;
+  clientFacingRate?: number;
   currency: string;
   isEnabled: boolean;
   expenseHandledByClient: boolean;
@@ -95,7 +96,7 @@ export default function GuestAddOns({ token }: { token: string }) {
         type: "perk",
         addonType: "custom",
         perkId: perk.id,
-        budgetConsumed: perk.pricingType === "requestable" ? perk.unitCost : 0,
+        budgetConsumed: perk.pricingType === "requestable" ? (perk.clientFacingRate ?? perk.unitCost) : 0,
         notes: `Guest requested: ${perk.name}`,
       });
 
@@ -148,17 +149,18 @@ export default function GuestAddOns({ token }: { token: string }) {
   };
 
   const getPerkBadge = (perk: Perk) => {
+    const effectiveRate = perk.clientFacingRate ?? perk.unitCost;
     if (perk.pricingType === "included" || perk.expenseHandledByClient) {
       return <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Included</Badge>;
     }
     if (perk.pricingType === "self_pay") {
-      return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-xs">₹{perk.unitCost.toLocaleString("en-IN")} · Self-pay</Badge>;
+      return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-xs">₹{effectiveRate.toLocaleString("en-IN")} · Self-pay</Badge>;
     }
     // requestable
-    if (perk.unitCost <= remainingBudget) {
-      return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">₹{perk.unitCost.toLocaleString("en-IN")} · Budget covered</Badge>;
+    if (effectiveRate <= remainingBudget) {
+      return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">₹{effectiveRate.toLocaleString("en-IN")} · Budget covered</Badge>;
     }
-    return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100 text-xs">₹{perk.unitCost.toLocaleString("en-IN")} · Agent approves</Badge>;
+    return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100 text-xs">₹{effectiveRate.toLocaleString("en-IN")} · Agent approves</Badge>;
   };
 
   const getPerkAction = (perk: Perk) => {
@@ -187,7 +189,8 @@ export default function GuestAddOns({ token }: { token: string }) {
     }
 
     if (perk.pricingType === "requestable") {
-      const withinBudget = perk.unitCost <= remainingBudget;
+      const effectiveRate = perk.clientFacingRate ?? perk.unitCost;
+      const withinBudget = effectiveRate <= remainingBudget;
       return (
         <Button
           size="sm"

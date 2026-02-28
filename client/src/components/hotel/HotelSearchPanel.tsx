@@ -7,6 +7,7 @@ import { Search, Loader2, ChevronDown, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
@@ -50,6 +51,7 @@ const FALLBACK_COUNTRIES = [
 ];
 
 type Phase = "search" | "results" | "rooms" | "confirm";
+type CommissionType = "amount" | "percentage";
 
 interface SearchParams {
   countryCode: string;
@@ -90,6 +92,16 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
   const [selectedHotel, setSelectedHotel] = useState<HotelResult | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<RoomOption | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [commissionType, setCommissionType] = useState<CommissionType>("amount");
+  const [commissionValue, setCommissionValue] = useState(0);
+
+  const getEditedRate = (baseRate: number) => {
+    if (!baseRate || baseRate <= 0) return 0;
+    const commission = commissionType === "percentage"
+      ? Math.round((baseRate * Math.max(commissionValue, 0)) / 100)
+      : Math.max(commissionValue, 0);
+    return Math.max(baseRate + commission, 0);
+  };
 
   const {
     data: countries,
@@ -121,6 +133,16 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
   const handleSearch = async () => {
     if (!searchParams.cityCode || !searchParams.checkIn || !searchParams.checkOut) {
       toast({ title: "Missing fields", description: "Please fill in city, check-in and check-out dates.", variant: "destructive" });
+      return;
+    }
+    const checkInDate = new Date(searchParams.checkIn + "T00:00:00");
+    const checkOutDate = new Date(searchParams.checkOut + "T00:00:00");
+    if (isNaN(checkInDate.getTime()) || isNaN(checkOutDate.getTime())) {
+      toast({ title: "Invalid dates", description: "Please provide valid check-in and check-out dates.", variant: "destructive" });
+      return;
+    }
+    if (checkOutDate <= checkInDate) {
+      toast({ title: "Invalid date range", description: "Check-out date must be after check-in date.", variant: "destructive" });
       return;
     }
     try {
@@ -175,14 +197,21 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
       const checkOutDate = new Date(searchParams.checkOut + "T00:00:00");
       if (isNaN(checkInDate.getTime())) throw new Error("Invalid check-in date");
       if (isNaN(checkOutDate.getTime())) throw new Error("Invalid check-out date");
+      if (checkOutDate <= checkInDate) throw new Error("Check-out date must be after check-in date");
 
       // Save to DB via existing hotel-booking route with tboHotelData
+      const baseRate = Number(selectedRoom?.Price?.RoomPrice ?? 0);
+      const clientFacingRate = baseRate > 0 ? getEditedRate(baseRate) : null;
       const payload = {
         eventId,
         hotelName: selectedHotel.HotelName,
         checkInDate: checkInDate.toISOString(),
         checkOutDate: checkOutDate.toISOString(),
         numberOfRooms: searchParams.numberOfRooms,
+        baseRate: baseRate > 0 ? baseRate : null,
+        commissionType,
+        commissionValue: commissionValue > 0 ? commissionValue : 0,
+        clientFacingRate,
         tboHotelData: {
           hotelCode: selectedHotel.HotelCode,
           roomTypeName: selectedRoom.RoomTypeName,
@@ -271,7 +300,7 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
               </PopoverContent>
             </Popover>
             {countriesError && (
-              <p className="text-xs text-amber-600 mt-1">TBO unavailable — showing common countries.</p>
+              <p className="text-xs text-amber-600 mt-1">Showing popular destinations first</p>
             )}
           </div>
 
@@ -336,7 +365,13 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
             <Input
               type="date"
               value={searchParams.checkIn}
-              onChange={(e) => setSearchParams((p) => ({ ...p, checkIn: e.target.value }))}
+              onChange={(e) => {
+                const nextCheckIn = e.target.value;
+                setSearchParams((p) => {
+                  const shouldResetCheckOut = p.checkOut && nextCheckIn && new Date(p.checkOut) <= new Date(nextCheckIn);
+                  return { ...p, checkIn: nextCheckIn, checkOut: shouldResetCheckOut ? "" : p.checkOut };
+                });
+              }}
             />
           </div>
 
@@ -344,6 +379,7 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
             <Label>Check-Out Date</Label>
             <Input
               type="date"
+              min={searchParams.checkIn || undefined}
               value={searchParams.checkOut}
               onChange={(e) => setSearchParams((p) => ({ ...p, checkOut: e.target.value }))}
             />
@@ -412,17 +448,55 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
   }
 
   if (phase === "confirm" && selectedHotel && selectedRoom) {
+    const baseRate = Number(selectedRoom?.Price?.RoomPrice ?? 0);
+    const editedRate = baseRate > 0 ? getEditedRate(baseRate) : 0;
     return (
-      <HotelBookingConfirmCard
-        hotel={selectedHotel}
-        room={selectedRoom}
-        checkIn={searchParams.checkIn}
-        checkOut={searchParams.checkOut}
-        numberOfRooms={searchParams.numberOfRooms}
-        onConfirm={handleConfirmBooking}
-        onBack={() => setPhase("rooms")}
-        isLoading={isConfirming}
-      />
+      <div className="space-y-4">
+        <HotelBookingConfirmCard
+          hotel={selectedHotel}
+          room={selectedRoom}
+          checkIn={searchParams.checkIn}
+          checkOut={searchParams.checkOut}
+          numberOfRooms={searchParams.numberOfRooms}
+          onConfirm={handleConfirmBooking}
+          onBack={() => setPhase("rooms")}
+          isLoading={isConfirming}
+        />
+        <div className="rounded-lg border p-4 space-y-3 bg-muted/10">
+          <p className="text-sm font-medium">Client Pricing (visible to client/guest)</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <Label>Base Rate (₹)</Label>
+              <Input value={baseRate > 0 ? baseRate : ""} disabled />
+            </div>
+            <div className="space-y-1">
+              <Label>Commission Type</Label>
+              <Select value={commissionType} onValueChange={(v) => setCommissionType(v as CommissionType)}>
+                <SelectTrigger className="bg-white text-gray-900 border-input">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-white text-gray-900 border-input">
+                  <SelectItem className="bg-white text-gray-900 data-[highlighted]:bg-gray-100 data-[state=checked]:bg-primary/10" value="amount">Amount (₹)</SelectItem>
+                  <SelectItem className="bg-white text-gray-900 data-[highlighted]:bg-gray-100 data-[state=checked]:bg-primary/10" value="percentage">Percentage (%)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Commission Value</Label>
+              <Input
+                type="number"
+                min={0}
+                value={commissionValue || ""}
+                onChange={(e) => setCommissionValue(Number(e.target.value) || 0)}
+                placeholder={commissionType === "percentage" ? "e.g. 12" : "e.g. 800"}
+              />
+            </div>
+          </div>
+          {editedRate > 0 && (
+            <p className="text-xs text-primary font-medium">Edited client room rate: ₹{editedRate.toLocaleString("en-IN")}</p>
+          )}
+        </div>
+      </div>
     );
   }
 

@@ -147,6 +147,7 @@ function AirportCombobox({
 }
 
 type Phase = "search" | "results" | "detail" | "confirm";
+type CommissionType = "amount" | "percentage";
 
 interface SearchParams {
   origin: string;
@@ -195,12 +196,22 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
   const [flightResults, setFlightResults] = useState<FlightResult[]>([]);
   const [selectedFlight, setSelectedFlight] = useState<FlightResult | null>(null);
   const [fareQuoteData, setFareQuoteData] = useState<any>(null);
+    const [commissionType, setCommissionType] = useState<CommissionType>("amount");
+    const [commissionValue, setCommissionValue] = useState(0);
   const [isConfirming, setIsConfirming] = useState(false);
 
   const flightSearch = useTBOFlightSearch();
   const fareQuote = useTBOFareQuote();
   const bookFlight = useTBOBookFlight();
   const issueTicket = useTBOTicket();
+
+  const getEditedFare = (baseFare: number) => {
+    if (!baseFare || baseFare <= 0) return 0;
+    const commission = commissionType === "percentage"
+      ? Math.round((baseFare * Math.max(commissionValue, 0)) / 100)
+      : Math.max(commissionValue, 0);
+    return Math.max(baseFare + commission, 0);
+  };
 
   const handleSearch = async () => {
     if (!searchParams.origin || !searchParams.destination || !searchParams.departureDate) {
@@ -343,6 +354,10 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
         toLocation: searchParams.destination,
         departureDate: departureDate.toISOString(),
         returnDate: returnDate?.toISOString(),
+        baseFare: Number(fare?.TotalFare ?? 0) || null,
+        commissionType,
+        commissionValue: commissionValue > 0 ? commissionValue : 0,
+        clientFacingFare: Number(fare?.TotalFare ?? 0) > 0 ? getEditedFare(Number(fare.TotalFare)) : null,
         tboFlightData,
       };
 
@@ -526,17 +541,56 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
   }
 
   if (phase === "confirm" && selectedFlight) {
+    const fare = fareQuoteData?.Fare ?? selectedFlight.Fare;
+    const baseFare = Number(fare?.TotalFare ?? 0);
+    const editedFare = baseFare > 0 ? getEditedFare(baseFare) : 0;
     return (
-      <FlightBookingConfirmCard
-        flight={selectedFlight}
-        traceId={traceId}
-        adults={searchParams.adults}
-        children={searchParams.children}
-        infants={searchParams.infants}
-        onConfirm={handleConfirmBooking}
-        onBack={() => setPhase("detail")}
-        isLoading={isConfirming || bookFlight.isPending || issueTicket.isPending}
-      />
+      <div className="space-y-4">
+        <FlightBookingConfirmCard
+          flight={selectedFlight}
+          traceId={traceId}
+          adults={searchParams.adults}
+          children={searchParams.children}
+          infants={searchParams.infants}
+          onConfirm={handleConfirmBooking}
+          onBack={() => setPhase("detail")}
+          isLoading={isConfirming || bookFlight.isPending || issueTicket.isPending}
+        />
+        <div className="rounded-lg border p-4 space-y-3 bg-muted/10">
+          <p className="text-sm font-medium">Client Pricing (visible to client/guest)</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <Label>Base Fare (₹)</Label>
+              <Input value={baseFare > 0 ? baseFare : ""} disabled />
+            </div>
+            <div className="space-y-1">
+              <Label>Commission Type</Label>
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-popover text-popover-foreground px-3 py-2 text-sm"
+                style={{ backgroundColor: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}
+                value={commissionType}
+                onChange={(e) => setCommissionType(e.target.value as CommissionType)}
+              >
+                <option value="amount" style={{ backgroundColor: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}>Amount (₹)</option>
+                <option value="percentage" style={{ backgroundColor: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}>Percentage (%)</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Commission Value</Label>
+              <Input
+                type="number"
+                min={0}
+                value={commissionValue || ""}
+                onChange={(e) => setCommissionValue(Number(e.target.value) || 0)}
+                placeholder={commissionType === "percentage" ? "e.g. 10" : "e.g. 500"}
+              />
+            </div>
+          </div>
+          {editedFare > 0 && (
+            <p className="text-xs text-primary font-medium">Edited client fare: ₹{editedFare.toLocaleString("en-IN")}</p>
+          )}
+        </div>
+      </div>
     );
   }
 

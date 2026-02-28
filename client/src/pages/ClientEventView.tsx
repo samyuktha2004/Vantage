@@ -30,6 +30,7 @@ import { useRef, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { parseExcelFile, parseCSVFile } from "@/lib/excelParser";
 import { api } from "@shared/routes";
+import { RsvpBreakdownCard } from "@/components/RsvpBreakdownCard";
 
 interface ClientEventViewProps {
   eventId: number;
@@ -230,30 +231,6 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
   if (!event) return <div className="text-center py-20 text-muted-foreground">Event not found</div>;
 
   const allGuests = (guests ?? []) as any[];
-  const confirmedGuests = allGuests.filter((g: any) => g.status === "confirmed").length;
-  const pendingGuests = allGuests.filter((g: any) => g.status === "pending").length;
-  const declinedGuests = allGuests.filter((g: any) => g.status === "declined").length;
-
-  const hasAnySelfManaged = (guest: any) => {
-    const hasPartialStay = !!guest.partialStayCheckIn || !!guest.partialStayCheckOut;
-    return !!(
-      guest.selfManageFlights ||
-      guest.selfManageHotel ||
-      guest.selfManageArrival ||
-      guest.selfManageDeparture ||
-      hasPartialStay
-    );
-  };
-
-  const isFullSelfManaged = (guest: any) => {
-    const travelFullySelfManaged = !!guest.selfManageFlights || (!!guest.selfManageArrival && !!guest.selfManageDeparture);
-    const stayFullySelfManaged = !!guest.selfManageHotel;
-    return travelFullySelfManaged && stayFullySelfManaged;
-  };
-
-  const fullSelfManagedYes = allGuests.filter((g: any) => g.status === "confirmed" && isFullSelfManaged(g)).length;
-  const partialSelfManagedYes = allGuests.filter((g: any) => g.status === "confirmed" && hasAnySelfManaged(g) && !isFullSelfManaged(g)).length;
-  const hostManagedYes = Math.max(confirmedGuests - fullSelfManagedYes - partialSelfManagedYes, 0);
 
   const offeredTravelOptions = (travelOptions ?? []) as any[];
   const offeredHotels = (hotelBookings ?? []) as any[];
@@ -297,16 +274,13 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
             <Users className="w-5 h-5 text-primary mt-0.5 shrink-0" />
             <div>
               <p className="text-xs text-muted-foreground">RSVP Status</p>
-              <div className="text-sm space-y-0.5">
-                <p className="font-semibold">Yes (host-managed): {hostManagedYes}</p>
-                <p className="text-muted-foreground">Yes + self-managed (partial): {partialSelfManagedYes}</p>
-                <p className="text-muted-foreground">Yes + self-managed (full): {fullSelfManagedYes}</p>
-                <p className="text-muted-foreground">No: {declinedGuests} · Pending: {pendingGuests}</p>
-              </div>
+              <p className="font-semibold text-sm">See detailed breakdown below</p>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      <RsvpBreakdownCard guests={allGuests} title="RSVP Breakdown" />
 
       {/* Offered by Agent */}
       {(offeredTravelOptions.length > 0 || offeredHotels.length > 0 || offeredAddOns.length > 0) && (
@@ -333,7 +307,11 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
                       <p className="text-sm font-medium">{perk.name}</p>
                       <p className="text-xs text-muted-foreground">
                         {perk.type}
-                        {typeof perk.unitCost === "number" ? ` · ₹${perk.unitCost.toLocaleString('en-IN')}` : ""}
+                        {typeof perk.clientFacingRate === "number"
+                          ? ` · ₹${perk.clientFacingRate.toLocaleString('en-IN')}`
+                          : typeof perk.unitCost === "number"
+                            ? ` · ₹${perk.unitCost.toLocaleString('en-IN')}`
+                            : ""}
                       </p>
                     </div>
                   </div>
@@ -423,6 +401,9 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
                         {opt.returnDate ? ` · Return: ${format(new Date(opt.returnDate), "PPP")}` : ""}
                       </p>
                     )}
+                    {typeof opt.clientFacingFare === "number" && opt.clientFacingFare > 0 && (
+                      <p className="text-xs text-primary font-medium">Client fare: ₹{opt.clientFacingFare.toLocaleString("en-IN")}</p>
+                    )}
                   </div>
                 </div>
               );
@@ -438,6 +419,9 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
                   <p className="text-xs text-muted-foreground">
                     {booking.numberOfRooms} room{booking.numberOfRooms !== 1 ? "s" : ""} reserved
                   </p>
+                  {typeof booking.clientFacingRate === "number" && booking.clientFacingRate > 0 && (
+                    <p className="text-xs text-primary font-medium">Client room rate: ₹{booking.clientFacingRate.toLocaleString("en-IN")}</p>
+                  )}
                 </div>
               </div>
             ))}
