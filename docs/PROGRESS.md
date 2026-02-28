@@ -1,187 +1,156 @@
 # Progress Tracker — Vantage
-
 **Last Updated:** February 2026
 
 ---
 
-## Current Status: MVP Build — Phase 2 (TBO API Integration)
+## Status: Hackathon MVP — complete ✅
+
+All planned features implemented. Nomination logic intentionally dropped. See "Dropped Features" below.
+
+---
+
+## Remaining Before Demo
+
+| # | Task | File | Size |
+|---|------|------|------|
+| — | All done | — | — |
 
 ---
 
 ## Completed Features
 
-### Core Platform
+### Auth & Roles
+| Feature | Notes |
+|---------|-------|
+| Agent sign-up / sign-in | Session-based, bcrypt |
+| Client sign-up / sign-in | Session-based, event code required |
+| Ground team sign-in | Scoped to one event via `user.eventCode` |
+| Guest access | Token URL (`/guest/:token`) — no password |
 
-| Feature                        | Notes                                                             |
-| ------------------------------ | ----------------------------------------------------------------- |
-| Agent sign-up / sign-in        | Session-based, bcrypt hashed passwords                            |
-| Client sign-up / sign-in       | Session-based, event code required post-signup                    |
-| Event CRUD                     | Create/edit/delete/publish with auto event codes                  |
-| Auto event code generation     | Format: `CLIENTEVENTyearMMDD` with uniqueness check               |
-| Event preview page             | Agent reviews before publishing                                   |
-| Label management               | Create/edit labels (VIP, Family, Staff, etc.) per event           |
-| Perk management                | Create perks with type (transport/meal/activity) per event        |
-| Label-Perk matrix              | Toggle enabled/disabled + expense coverage per label              |
-| Guest CRUD                     | Create/edit/delete with full detail fields                        |
-| Bulk guest import              | Excel (.xlsx) and CSV parsing via Papa Parse + XLSX               |
-| Unique guest access tokens     | UUID-based, stored in `guests.accessToken`                        |
-| Human-readable booking refs    | Format: `BOOK-XXXX`, stored in `guests.bookingRef`                |
-| Guest QR code + shareable link | Generated from access token, agent-copyable                       |
-| Seat allocation per guest      | `allocatedSeats` + `confirmedSeats` fields                        |
-| Waitlist system                | Priority-based (VIP=1, Family=2, etc.)                            |
-| Capacity monitoring            | Rooms vs. guests with Critical/Warning/Over-capacity alerts       |
-| Request approval workflow      | Guest requests → agent reviews → approve/reject with notes        |
-| Excel report generation        | 6-sheet: Summary, Guests, Hotel, Labels/Perks, Requests, Extended |
+### Event Management (Agent)
+| Feature | Notes |
+|---------|-------|
+| Event CRUD + publish | Auto event codes (e.g. `TINA2026`) |
+| TBO hotel search + block confirmation | Live API via `HotelSearchPanel` |
+| TBO flight search + seat confirmation | Live API via `FlightSearchPanel` |
+| Label management | VIP, Family, etc. — custom names, free-text |
+| Perk management | `included` / `requestable` / `self_pay` with unit cost |
+| Label-perk matrix | Toggle enabled + `expenseHandledByClient` per tier |
+| Bulk guest import (agent) | Excel (.xlsx) + CSV via Papa Parse + XLSX |
+| Guest CRUD + QR codes | UUID access tokens, human-readable booking refs |
+| Seat allocation per guest | `allocatedSeats` + `confirmedSeats` |
+| Waitlist system | Priority-based with waitlist bell |
+| Request approval workflow | Approve/decline with notes + Bulk Approve All |
+| Copy invite link | Copies microsite URL to clipboard |
+| Copy event code | Copies raw code (e.g. `TINA2026`) for sharing with client |
+| Download Manifest (Excel) | All columns: PNR, meal, emergency contact, transport |
+| Inventory EWS banners | Warning/critical banners when rooms >70%/>90% filled |
+| Cover image / video | URL input in Microsite Appearance tab |
+| Create staff account | Ground team account scoped to event |
 
-### Guest Portal (8 Pages)
+### Client View
+| Feature | Notes |
+|---------|-------|
+| Multi-event dashboard | Client sees all their events |
+| ClientEventView | Separate view from agent tabs |
+| Per-label add-on budget (editable) | PATCH `/api/events/:id/labels/:labelId` |
+| Perk coverage toggles (editable) | Switch: client-covered vs guest-pays |
+| Cost breakdown | Total allocated vs used, by label |
+| Pending requests (read-only) | Guest name visible per request |
+| Import guests from Excel | Same parse + POST flow as agent |
+| Add custom labels | Dialog → POST `/api/events/:id/labels` → reflects in agent view |
 
-| Page         | Route                        | Notes                                               |
-| ------------ | ---------------------------- | --------------------------------------------------- |
-| Lookup       | `/guest`                     | Search by booking ref → redirects to portal         |
-| Dashboard    | `/guest/:token`              | Event overview + navigation                         |
-| RSVP         | `/guest/:token` (inline)     | Confirm seats, accept/decline                       |
-| Travel       | `/guest/:token/travel`       | Read-only confirmed travel details                  |
-| Concierge    | `/guest/:token/concierge`    | Perks confirmation / contact agent                  |
-| Itinerary    | `/guest/:token/itinerary`    | Activity selection with conflict detection          |
-| Bleisure     | `/guest/:token/bleisure`     | Stay extension calendar (hardcoded $250/night rate) |
-| ID Vault     | `/guest/:token/idvault`      | Document upload                                     |
-| Room Upgrade | `/guest/:token/room-upgrade` | Upgrade request form                                |
+### Guest Portal (4-Step Wizard)
+| Step | Route | Notes |
+|------|-------|-------|
+| RSVP | `/guest/:token/rsvp` | Confirm/decline, family members, meal pref, emergency contact |
+| Travel Prefs | `/guest/:token/travel-prefs` | Transport mode (group/own/train/other/local), PNR/notes |
+| Summary | `/guest/:token/summary` | Read-only: arrival, hotel nights, departure, group savings |
+| Add-ons | `/guest/:token/addons` | Budget meter, perk action cards, extend stay |
+| Receipt | `/guest/:token` | "You're all set" + edit links |
+| Microsite | `/event/:eventCode` | Branded public page, booking-ref lookup, self-registration |
 
----
-
-## In Progress (Current Session)
-
-| Task                         | Phase   | Status         |
-| ---------------------------- | ------- | -------------- |
-| PRD documentation            | Phase 0 | ✅ Done        |
-| Roadmap documentation        | Phase 0 | ✅ Done        |
-| Progress tracker (this file) | Phase 0 | ✅ Done        |
-| TBO API Integration Guide    | Phase 0 | 🔄 In progress |
-| TBO API Setup Guide          | Phase 0 | 🔄 In progress |
-| Update .env + .env.example   | Phase 1 | ⏳ Pending     |
-| Schema update (schema.ts)    | Phase 1 | ⏳ Pending     |
-| Storage layer extension      | Phase 1 | ⏳ Pending     |
-| TBO type definitions         | Phase 2 | ⏳ Pending     |
-| TBO Hotel service layer      | Phase 2 | ⏳ Pending     |
-| TBO Flight service layer     | Phase 2 | ⏳ Pending     |
-| TBO Hotel Express routes     | Phase 2 | ⏳ Pending     |
-| TBO Flight Express routes    | Phase 2 | ⏳ Pending     |
-| Hotel search UI components   | Phase 3 | ⏳ Pending     |
-| Flight search UI components  | Phase 4 | ⏳ Pending     |
-| Event microsite page         | Phase 5 | ⏳ Pending     |
-| Ground team check-in         | Phase 6 | ⏳ Pending     |
-| Inventory dashboard tab      | Phase 7 | ⏳ Pending     |
-
----
-
-## Known Issues & Technical Debt
-
-| Issue                                                                            | File                 | Severity | Notes                                                                                              |
-| -------------------------------------------------------------------------------- | -------------------- | -------- | -------------------------------------------------------------------------------------------------- |
-| Bug: `travelSchedules` Drizzle relation references non-existent `eventId` column | `server/storage.ts`  | Medium   | Logic error; `eq(travelSchedules.eventId, travelOptionId)` — `eventId` doesn't exist on this table |
-| Hardcoded `$250/night` bleisure rate                                             | `GuestBleisure.tsx`  | Medium   | Must connect to live TBO hotel rate in V1                                                          |
-| No `arrived` status for guests                                                   | `shared/schema.ts`   | High     | Ground team check-in requires this status value                                                    |
-| TBO Air token management missing                                                 | N/A                  | Critical | No auth flow exists; will be added in Phase 2                                                      |
-| No CORS protection on TBO endpoints                                              | N/A                  | High     | Will add server-side-only enforcement in Phase 2                                                   |
-| Guest portal `GuestTravel.tsx` references undefined `ref` variable               | `GuestTravel.tsx:83` | Low      | `ref` used in `setLocation` call but not defined                                                   |
-| `EventDetails.tsx` has many console.log debug statements                         | `EventDetails.tsx`   | Low      | Should be removed before production                                                                |
+### Ground Team
+| Feature | Notes |
+|---------|-------|
+| Check-in dashboard | Live stats, search by name/booking ref |
+| QR code scanner | Camera overlay, token matching |
+| Mark arrived | `POST /api/groundteam/checkin/:guestId` |
+| Walk-in registration | On-spot guest + "Walk-in" badge |
+| Flight status coloring | Card border: green/blue/amber/red per status |
+| Flight status dropdown | Ground team manually updates per guest |
+| Emergency contact (SOS) | Red badge in expanded guest card |
+| Rooming list | PNR, meal pref, origin, transport mode icon |
+| Download manifest Excel | All columns from rooming list |
 
 ---
 
-## Database Schema (Current State)
+## Intentionally Dropped Features
 
-### Tables (Supabase PostgreSQL)
-
-- `users` — agents + clients (+ ground team after Phase 1)
-- `events` — MICE events / weddings
-- `client_details` — host client info per event
-- `hotel_bookings` — hotel blocks (manual only; TBO data column added in Phase 1)
-- `travel_options` — travel modes per event (manual only; TBO data column added in Phase 1)
-- `travel_schedules` — flight/train schedule details
-- `labels` — guest tier definitions per event
-- `perks` — service add-ons per event
-- `label_perks` — junction table (label × perk × expense toggle)
-- `guests` — all attendees with access tokens
-- `guest_family` — family members for rooming
-- `guest_requests` — guest perk requests for agent approval
-- `itinerary_events` — scheduled event activities
-- `guest_itinerary` — guest activity selections
-- `group_inventory` — _(added in Phase 1)_ inventory tracking
-
-### Pending Schema Changes (Phase 1)
-
-- Add `tbo_hotel_data JSONB` to `hotel_bookings`
-- Add `tbo_flight_data JSONB` to `travel_options`
-- Create `group_inventory` table
-- Add `groundTeam` to user role enum
+| Feature | Reason |
+|---------|--------|
+| Nomination logic (pre-filled +1 names) | Increases agent/client work; nickname vs legal name mismatches; guest feels odd editing "chosen" names |
+| Cover image file upload | URL input is sufficient for hackathon demo — paste any Unsplash/hosted URL |
+| Email/SMS notifications | No transactional email service configured; out of scope for demo |
+| Inventory-low push alerts | EWS banners in UI are sufficient for demo |
+| Multi-hotel choice UI for guests | Data model supports multiple inventory rows; guest UI assigns one hotel |
 
 ---
 
-## API Routes (Current State)
+## Known Issues (Non-blocking)
 
-### Auth
+| Issue | Severity | Notes |
+|-------|----------|-------|
+| MemoryStore sessions lost on restart | Low | Acceptable for demo; swap to `connect-pg-simple` for production |
+| Pre-existing TS errors in Dashboard.tsx, GuestConcierge.tsx, GuestTravel.tsx | Low | Not caused by recent work; doesn't affect core demo flows |
+| `travelSchedules.eventId` Drizzle error in storage.ts | Low | InMemoryStorage only, not used in production |
 
-- `POST /api/auth/signup`
-- `POST /api/auth/signin`
-- `GET /api/user`
-- `POST /api/auth/logout`
-- `POST /api/user/event-code`
+---
 
-### Events
+## Tech Stack
 
-- `GET /api/events` — list by agent or event code
-- `POST /api/events` — create
-- `GET /api/events/:id` — get one
-- `PUT /api/events/:id` — update
-- `DELETE /api/events/:id` — delete
-- `POST /api/events/:id/publish`
+| Layer | Tech |
+|-------|------|
+| Frontend | React 18, TypeScript, Vite, Wouter, TanStack Query v5 |
+| UI | shadcn/ui, Tailwind CSS, Framer Motion |
+| Backend | Express 5, TypeScript, tsx (dev) |
+| Database | PostgreSQL via Supabase, Drizzle ORM (`db:push` workflow) |
+| Auth | bcryptjs + express-session (agents/clients); token URL (guests) |
+| APIs | TBO Hotel B2B, TBO Air (TekTravels UAT) |
+| Utilities | XLSX, Papaparse, html5-qrcode, multer |
 
-### Event Setup
+---
 
-- `POST/GET /api/events/:id/client-details`
-- `POST/GET /api/events/:id/hotel-booking(s)`
-- `POST/GET /api/events/:id/travel-options`
+## Key File Map
 
-### Labels / Perks
+```
+server/
+  tbo/tboHotelService.ts       ← Hotel API (auth + search + book)
+  tbo/tboFlightService.ts      ← Flight API (token cache + search)
+  tbo-hotel-routes.ts          ← Hotel proxy routes
+  tbo-flight-routes.ts         ← Flight proxy routes
+  routes.ts                    ← All main API routes
+  guest-routes.ts              ← Guest portal routes (token-based)
+  storage.ts                   ← All DB queries (Drizzle)
+  db.ts                        ← Connection pool
 
-- `GET/POST /api/events/:eventId/labels`
-- `PUT /api/events/:eventId/labels/:id`
-- `GET/POST /api/events/:eventId/perks`
-- `PUT /api/events/:eventId/perks/:id`
-- `GET/PUT /api/events/:eventId/labels/:labelId/perks/:perkId`
+client/src/
+  pages/
+    EventDetails.tsx            ← Agent event view (tabs: Guests, Labels, Perks, Inventory, Approval, Microsite)
+    ClientEventView.tsx         ← Client view (budget, perk toggles, import, add label)
+    EventMicrosite.tsx          ← Public branded page at /event/:eventCode
+    EventSetup.tsx              ← Hotel + flight search wizard (Steps 1-3)
+    ApprovalReview.tsx          ← Agent approves/rejects guest requests
+    guest/GuestRSVP.tsx         ← Wizard Step 1
+    guest/GuestTravelPrefs.tsx  ← Wizard Step 2
+    guest/GuestBookingSummary.tsx ← Wizard Step 3
+    guest/GuestAddOns.tsx       ← Wizard Step 4
+    groundteam/CheckInDashboard.tsx ← Ground team check-in
+    groundteam/RoomingList.tsx  ← Full guest manifest
+  components/
+    hotel/                      ← HotelSearchPanel → HotelResultsList → HotelRoomSelector → HotelBookingConfirmCard
+    flight/                     ← FlightSearchPanel → FlightResultsList → FlightDetailCard → FlightBookingConfirmCard
+  lib/excelParser.ts            ← parseExcelFile, parseCSVFile, exportManifestToExcel
 
-### Guests
-
-- `GET/POST /api/events/:eventId/guests`
-- `GET/PUT/DELETE /api/guests/:id`
-- `GET /api/guests/lookup?ref=XXXX`
-
-### Guest Portal
-
-- `GET /api/guest/portal/:token`
-- `POST /api/guest/:token/rsvp`
-- `POST /api/guest/:token/family`
-- `GET/POST /api/guest/:token/itinerary`
-- `POST /api/guest/:token/request`
-- `PUT /api/guest/:token/bleisure`
-- `PUT /api/guest/:token/id-upload`
-
-### Pending Routes (Phases 2–7)
-
-- `GET /api/tbo/hotel/countries`
-- `GET /api/tbo/hotel/cities`
-- `GET /api/tbo/hotel/list`
-- `POST /api/tbo/hotel/search`
-- `POST /api/tbo/hotel/prebook`
-- `POST /api/tbo/hotel/book`
-- `GET /api/tbo/hotel/booking/:id`
-- `POST /api/tbo/hotel/cancel`
-- `POST /api/tbo/flight/search`
-- `POST /api/tbo/flight/farequote`
-- `POST /api/tbo/flight/farerule`
-- `POST /api/tbo/flight/book`
-- `POST /api/tbo/flight/ticket`
-- `GET /api/events/:id/inventory`
-- `GET /api/microsite/:eventCode`
-- `POST /api/microsite/:eventCode/register`
-- `POST /api/groundteam/checkin/:guestId`
+shared/schema.ts                ← Single source of truth for all DB tables
+```

@@ -10,7 +10,7 @@
  *  5. Cost breakdown
  *  6. Pending guest requests (read-only)
  */
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEvent } from "@/hooks/use-events";
 import { useLabels } from "@/hooks/use-labels";
 import { usePerks } from "@/hooks/use-perks";
@@ -22,10 +22,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Calendar, MapPin, Users, DollarSign, Tag, Gift, Inbox, CheckCircle2, Clock } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Loader2, Calendar, MapPin, Users, DollarSign, Tag, Inbox, Clock, Plus, Upload, FileSpreadsheet } from "lucide-react";
 import { format } from "date-fns";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { parseExcelFile, parseCSVFile } from "@/lib/excelParser";
 
 interface ClientEventViewProps {
   eventId: number;
@@ -96,6 +98,88 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
     }
   };
 
+  // Guest import
+  const [uploading, setUploading] = useState(false);
+  const [pendingImport, setPendingImport] = useState<any[]>([]);
+
+  const handleClientFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      let parsed: any[] = [];
+      if (file.name.endsWith('.csv')) {
+        parsed = await parseCSVFile(file);
+      } else {
+        parsed = await parseExcelFile(file);
+      }
+      parsed = parsed.filter((g) => g.name && g.name.trim() !== '');
+      setPendingImport(parsed);
+      toast({ title: "File parsed!", description: `Found ${parsed.length} guests. Confirm to import.` });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleImportConfirm = async () => {
+    setUploading(true);
+    try {
+      for (const guest of pendingImport) {
+        await fetch(`/api/events/${eventId}/guests`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            eventId,
+            name: guest.name,
+            email: guest.email,
+            phone: guest.phone ? String(guest.phone) : undefined,
+            category: guest.category,
+            dietaryRestrictions: guest.dietaryRestrictions,
+            specialRequests: guest.specialRequests,
+          }),
+        });
+      }
+      toast({ title: "Guests imported!", description: `${pendingImport.length} guests added` });
+      setPendingImport([]);
+      queryClient.invalidateQueries({ queryKey: ["guests", eventId] });
+    } catch (err: any) {
+      toast({ title: "Import failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Add Label
+  const [showAddLabel, setShowAddLabel] = useState(false);
+  const [newLabelName, setNewLabelName] = useState("");
+  const [creatingLabel, setCreatingLabel] = useState(false);
+
+  const handleCreateLabel = async () => {
+    if (!newLabelName.trim()) return;
+    setCreatingLabel(true);
+    try {
+      const res = await fetch(`/api/events/${eventId}/labels`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: newLabelName.trim(), color: "#4F46E5" }),
+      });
+      if (!res.ok) throw new Error("Failed to create label");
+      toast({ title: "Label created!", description: newLabelName.trim() });
+      setNewLabelName("");
+      setShowAddLabel(false);
+      queryClient.invalidateQueries({ queryKey: ["labels", eventId] });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setCreatingLabel(false);
+    }
+  };
+
   // Toggle perk coverage
   const [togglingPerk, setTogglingPerk] = useState<string | null>(null);
 
@@ -162,6 +246,36 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
         </Card>
       </div>
 
+      {/* Guest Import */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileSpreadsheet className="w-4 h-4" />
+            Import Guests
+          </CardTitle>
+          <CardDescription>Upload a CSV or Excel file to add guests</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <label className="flex items-center gap-2 cursor-pointer w-fit">
+            <Button size="sm" variant="outline" className="gap-2 pointer-events-none" disabled={uploading}>
+              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              Choose file
+            </Button>
+            <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleClientFileUpload} disabled={uploading} />
+          </label>
+          {pendingImport.length > 0 && (
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-accent/30 text-sm">
+              <span className="font-medium">{pendingImport.length} guests ready to import</span>
+              <Button size="sm" onClick={handleImportConfirm} disabled={uploading}>
+                {uploading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                Confirm Import
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setPendingImport([])}>Cancel</Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Cost Breakdown */}
       {costBreakdown && (
         <Card>
@@ -202,12 +316,60 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
       )}
 
       {/* Per-Label Budget + Perk Coverage */}
-      {labels && labels.length > 0 && (
+      {/* Add Label Dialog */}
+      <Dialog open={showAddLabel} onOpenChange={setShowAddLabel}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Guest Tier</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label htmlFor="newLabelName">Label name</Label>
+            <Input
+              id="newLabelName"
+              placeholder="e.g. Bride's Side, VIP, Family"
+              value={newLabelName}
+              onChange={(e) => setNewLabelName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCreateLabel()}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowAddLabel(false)}>Cancel</Button>
+            <Button onClick={handleCreateLabel} disabled={creatingLabel || !newLabelName.trim()}>
+              {creatingLabel ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Create Label
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {(!labels || labels.length === 0) && (
         <div className="space-y-4">
-          <h3 className="text-lg font-medium flex items-center gap-2">
-            <Tag className="w-5 h-5 text-primary" />
-            Guest Tiers & Perk Coverage
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium flex items-center gap-2">
+              <Tag className="w-5 h-5 text-primary" />
+              Guest Tiers & Perk Coverage
+            </h3>
+            <Button size="sm" variant="outline" onClick={() => setShowAddLabel(true)}>
+              <Plus className="w-3 h-3 mr-1" /> Add Label
+            </Button>
+          </div>
+          <div className="text-center py-10 border-2 border-dashed rounded-xl text-muted-foreground text-sm">
+            No guest tiers yet — add a label to get started
+          </div>
+        </div>
+      )}
+
+      {(labels && labels.length > 0) && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium flex items-center gap-2">
+              <Tag className="w-5 h-5 text-primary" />
+              Guest Tiers & Perk Coverage
+            </h3>
+            <Button size="sm" variant="outline" onClick={() => setShowAddLabel(true)}>
+              <Plus className="w-3 h-3 mr-1" /> Add Label
+            </Button>
+          </div>
           {labels.map((label: any) => {
             const labelPerks = labelPerksData?.[label.id] ?? [];
             const currentBudget = budgetEdits[label.id] ?? label.addOnBudget ?? 0;

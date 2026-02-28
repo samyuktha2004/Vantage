@@ -36,10 +36,16 @@ npm run db:push
 npm run dev
 ```
 
-The app runs at **http://localhost:5001**
+The app runs at **http://localhost:5000** by default.
 
-> **macOS note:** macOS Monterey and later uses port 5000 for AirPlay Receiver, which blocks the server.
-> The `.env.example` sets `PORT=5001` to avoid this. If you change the port, update your browser URL accordingly.
+| OS | Default URL | Notes |
+|----|-------------|-------|
+| Windows / Linux | http://localhost:5000 | Works out of the box |
+| macOS Monterey+ | http://localhost:5000 | ⚠️ May fail if AirPlay Receiver is on |
+
+> **macOS AirPlay conflict:** macOS Monterey and later reserves port 5000 for AirPlay Receiver.
+> If you see an error on startup, add `PORT=5001` to your `.env` and open http://localhost:5001 instead.
+> To check: System Settings → General → AirDrop & Handoff → AirPlay Receiver.
 
 ---
 
@@ -51,7 +57,7 @@ Copy `.env.example` to `.env` and fill in these values:
 |----------|-----------------|----------|
 | `DATABASE_URL` | Supabase → Settings → Database → Connection string → URI | Yes |
 | `SESSION_SECRET` | Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` | Yes (in prod) |
-| `PORT` | Any free port — use `5001` on macOS | No (default: 5000) |
+| `PORT` | Leave unset (default 5000). Set to `5001` only on macOS if AirPlay conflicts | No |
 | `TBO_HOTEL_URL` | TBO B2B Holidays API base URL | For hotel search |
 | `TBO_HOTEL_USERNAME` / `TBO_HOTEL_PASSWORD` | TBO Hackathon credentials | For hotel search |
 | `TBO_AIR_URL` | TekTravels UAT endpoint | For flight search |
@@ -97,42 +103,50 @@ npm run start       # Run production build
 
 ## Deploying
 
-### Railway (Recommended)
+### Free Hosting (Zero Cost Stack)
 
-Railway supports persistent Node.js processes — the simplest match for this app.
+The entire project can be hosted for **free** using these services:
 
-1. Push your code to GitHub
-2. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub repo
-3. Add environment variables in the Railway dashboard (same as your `.env`)
-4. Railway auto-detects Node.js, runs `npm install && npm run build && npm run start`
-5. Your app is live on a `.railway.app` URL
+| Layer | Service | Free tier |
+|-------|---------|-----------|
+| **Database** | [Supabase](https://supabase.com) | 2 projects, 500 MB DB, always-on |
+| **App hosting** | [Render](https://render.com) | 1 free web service, spins down after 15 min idle |
+| **App hosting** | [Railway](https://railway.app) | $5 free credit/month, no spin-down |
 
-**No `vercel.json` or config files needed.**
+**Supabase** is already set up (your `DATABASE_URL` points to it). You just need to host the app.
 
-### Render
+#### Render (no credit card required)
+
+1. Push your code to GitHub (make sure `.env` is in `.gitignore`)
+2. [render.com](https://render.com) → New → Web Service → Connect your repo
+3. Set these fields:
+   - **Build command:** `npm install && npm run build`
+   - **Start command:** `npm run start`
+   - **Node version:** 18 (set in Environment → `NODE_VERSION=18`)
+4. Add your environment variables (same as your local `.env`)
+5. Click **Deploy** — Render gives you a `.onrender.com` URL
+
+> **Free tier note:** Render spins your service down after 15 minutes of no traffic. The first request after idle takes ~30 seconds to wake up. For a hackathon demo, open the URL 30s before you present.
+
+#### Railway ($5 free credit/month — no spin-down)
 
 1. Push to GitHub
-2. [render.com](https://render.com) → New Web Service → Connect repo
-3. Build command: `npm install && npm run build`
-4. Start command: `npm run start`
-5. Add env vars, deploy
+2. [railway.app](https://railway.app) → New Project → Deploy from GitHub repo
+3. Select your repo → Railway auto-detects Node.js
+4. Add environment variables in the Railway dashboard
+5. Your app is live on a `.railway.app` URL immediately
 
-> Render's free tier spins down after 15 minutes of inactivity — first request after sleep takes ~30s.
+Railway runs persistently (no cold starts) and the free $5/month credit covers ~500 hours — more than enough for a project this size.
 
 ---
 
-### Why not Vercel?
+### Why not Vercel or Firebase?
 
-Vercel runs **serverless functions**, not persistent Node.js processes. This app uses:
-- **Express sessions** (stateful — lost between serverless invocations)
-- **In-memory session store** (doesn't survive cold starts)
-- **Long-lived DB connection pool** (incompatible with per-request serverless)
+**Vercel** runs serverless functions, not persistent Node.js servers. This app uses Express sessions (stateful) and an in-memory session store — both incompatible with serverless. You'd need to rewrite auth as stateless JWTs first.
 
-Hosting this on Vercel would require rewriting the auth system as stateless (JWTs) and replacing the session store. That's a significant change — **use Railway or Render instead.**
+**Firebase Hosting** only serves static files. The Express API would need to be rewritten as Cloud Functions — significant restructuring.
 
-### Why not Firebase?
-
-Firebase Hosting serves **static files only**. The Express API would need to be rewritten as **Firebase Cloud Functions** — another significant restructuring. Not recommended.
+**Use Render or Railway instead** — they run regular Node.js servers and need zero configuration changes.
 
 ---
 

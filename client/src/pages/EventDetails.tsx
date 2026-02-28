@@ -584,6 +584,17 @@ export default function EventDetails() {
                 >
                   <Copy className="w-3 h-3" /> Copy invite link
                 </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="gap-1.5 font-mono text-xs"
+                  onClick={() => {
+                    navigator.clipboard.writeText(event.eventCode);
+                    toast({ title: "Event code copied!", description: event.eventCode });
+                  }}
+                >
+                  <Copy className="w-3 h-3" /> {event.eventCode}
+                </Button>
               </>
             )}
             <Button

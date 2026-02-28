@@ -5,11 +5,16 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import session from "express-session";
 import MemoryStore from "memorystore";
+import connectPg from "connect-pg-simple";
+import { pool } from "./db";
 
 const app = express();
 const httpServer = createServer(app);
 
-const SessionStore = MemoryStore(session);
+// Prefer Postgres session store (survives restarts); fall back to MemoryStore if no DB
+const store = pool
+  ? new (connectPg(session))({ pool, tableName: "session", createTableIfMissing: true })
+  : new (MemoryStore(session))({ checkPeriod: 86400000 });
 
 declare module "http" {
   interface IncomingMessage {
@@ -45,9 +50,7 @@ app.use(
     })(),
     resave: false,
     saveUninitialized: false,
-    store: new SessionStore({
-      checkPeriod: 86400000, // prune expired entries every 24h
-    }),
+    store,
     cookie: {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
