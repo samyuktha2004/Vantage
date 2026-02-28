@@ -280,14 +280,34 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only agents or clients can update events" });
       }
       const eventId = Number(req.params.id);
+
+      // Scope check: clients may only edit events they own
+      if (user.role === "client") {
+        const event = await storage.getEvent(eventId);
+        if (!event || event.clientId !== user.id) {
+          return res.status(403).json({ message: "You can only update your own events" });
+        }
+      }
+
       const { coverMediaUrl, coverMediaType, themeColor, themePreset, scheduleText, inviteMessage } = req.body;
       const updates: Record<string, any> = {};
-      if (coverMediaUrl !== undefined) updates.coverMediaUrl = coverMediaUrl || null;
+      if (coverMediaUrl !== undefined) {
+        const url = (coverMediaUrl || "").trim();
+        updates.coverMediaUrl = url && url.length <= 2048 ? url : null;
+      }
       if (coverMediaType !== undefined) updates.coverMediaType = coverMediaType;
       if (themeColor !== undefined) updates.themeColor = themeColor;
       if (themePreset !== undefined) updates.themePreset = themePreset;
-      if (scheduleText !== undefined) updates.scheduleText = scheduleText || null;
-      if (inviteMessage !== undefined) updates.inviteMessage = inviteMessage || null;
+
+      // Sanitise text fields: strip HTML tags, enforce max length
+      const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "");
+      if (scheduleText !== undefined) {
+        updates.scheduleText = scheduleText ? stripHtml(String(scheduleText)).slice(0, 5000) : null;
+      }
+      if (inviteMessage !== undefined) {
+        updates.inviteMessage = inviteMessage ? stripHtml(String(inviteMessage)).slice(0, 2000) : null;
+      }
+
       const [updated] = await db.update(events).set(updates).where(eq(events.id, eventId)).returning();
       if (!updated) return res.status(404).json({ message: "Event not found" });
       res.json(updated);
@@ -385,7 +405,14 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only agents can add hotel bookings" });
       }
 
-      const booking = await storage.createHotelBooking(req.body);
+      const payload = {
+        ...req.body,
+        eventId: Number(req.params.id),
+        checkInDate: req.body?.checkInDate ? new Date(req.body.checkInDate) : req.body?.checkInDate,
+        checkOutDate: req.body?.checkOutDate ? new Date(req.body.checkOutDate) : req.body?.checkOutDate,
+      };
+
+      const booking = await storage.createHotelBooking(payload);
 
       // Populate groupInventory so inventory dashboard, bleisure rate, and EWS work
       storage.createGroupInventory({
@@ -425,7 +452,14 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only agents can add travel options" });
       }
 
-      const travelOption = await storage.createTravelOption(req.body);
+      const payload = {
+        ...req.body,
+        eventId: Number(req.params.id),
+        departureDate: req.body?.departureDate ? new Date(req.body.departureDate) : req.body?.departureDate,
+        returnDate: req.body?.returnDate ? new Date(req.body.returnDate) : req.body?.returnDate,
+      };
+
+      const travelOption = await storage.createTravelOption(payload);
 
       // Populate groupInventory for flight legs so seat inventory is tracked
       if (travelOption.travelMode === "flight") {
@@ -1125,6 +1159,14 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Unauthorized" });
       }
       const eventId = Number(req.params.id);
+
+      // Scope check: clients may only view their own event cost breakdown
+      if (user.role === "client") {
+        const event = await storage.getEvent(eventId);
+        if (!event || event.clientId !== user.id) {
+          return res.status(403).json({ message: "You can only view your own events" });
+        }
+      }
 
       // Fetch labels with budget info
       const eventLabels = await db.select().from(labels).where(eq(labels.eventId, eventId));

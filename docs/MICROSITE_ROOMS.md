@@ -20,6 +20,7 @@ Example response:
 ```
 
 Notes:
+
 - The endpoint is intentionally safe for public consumption and does not expose PII, booking codes, confirmation numbers, or any TBO-specific tokens.
 - The default behaviour is a mocked, display-only list (the "fallback"). This keeps the microsite fully functional for demos and MVPs.
 
