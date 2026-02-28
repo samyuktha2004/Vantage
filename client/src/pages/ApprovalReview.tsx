@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, CheckCircle, XCircle, Clock, CreditCard, User, FileText, DollarSign, AlertCircle, CheckCheck } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, Clock, CreditCard, User, FileText, DollarSign, AlertCircle, CheckCheck, Send } from "lucide-react";
 import { useRequests, useUpdateRequest } from "@/hooks/use-requests";
 import { useEvent } from "@/hooks/use-events";
 import { useGuests } from "@/hooks/use-guests";
@@ -35,6 +35,7 @@ export default function ApprovalReview() {
   const [bulkProgress, setBulkProgress] = useState(0);
 
   const pendingRequests = requests?.filter(r => r.status === 'pending') || [];
+  const forwardedRequests = requests?.filter(r => r.status === 'forwarded_to_client') || [];
   const approvedRequests = requests?.filter(r => r.status === 'approved') || [];
   const rejectedRequests = requests?.filter(r => r.status === 'rejected') || [];
 
@@ -73,6 +74,15 @@ export default function ApprovalReview() {
         description: error.message,
         variant: "destructive",
       });
+    }
+  };
+
+  const handleForwardToClient = async (request: any) => {
+    try {
+      await updateRequest.mutateAsync({ id: request.id, status: "forwarded_to_client" });
+      toast({ title: "Forwarded to Client", description: `${request.guest?.name}'s request sent to client for approval` });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     }
   };
 
@@ -260,6 +270,16 @@ export default function ApprovalReview() {
                           </Button>
                           <Button
                             size="sm"
+                            variant="outline"
+                            className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                            onClick={() => handleForwardToClient(request)}
+                            disabled={updateRequest.isPending}
+                          >
+                            <Send className="w-4 h-4 mr-1" />
+                            Forward to Client
+                          </Button>
+                          <Button
+                            size="sm"
                             className="bg-green-600 hover:bg-green-700"
                             onClick={() => handleReviewClick(request, "approve")}
                             disabled={updateRequest.isPending}
@@ -280,6 +300,34 @@ export default function ApprovalReview() {
                     )}
                   </Card>
                 </motion.div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Forwarded to Client Section */}
+        {forwardedRequests.length > 0 && (
+          <div className="space-y-4">
+            <h2 className="text-2xl font-serif text-primary">Awaiting Client Approval</h2>
+            <div className="space-y-3">
+              {forwardedRequests.map((request: any) => (
+                <Card key={request.id} className="border-blue-200 bg-blue-50/50">
+                  <CardHeader>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <Send className="w-5 h-5 text-blue-600" />
+                      <CardTitle className="text-base">{request.guest?.name || 'Unknown Guest'}</CardTitle>
+                      <Badge className="bg-blue-600">Forwarded to Client</Badge>
+                      {request.addonType && (
+                        <Badge variant="secondary" className="text-xs capitalize">
+                          {request.addonType.replace(/_/g, ' ')}
+                        </Badge>
+                      )}
+                    </div>
+                    <CardDescription className="text-sm capitalize">
+                      {request.type?.replace('_', ' ')}
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
               ))}
             </div>
           </div>

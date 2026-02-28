@@ -377,6 +377,19 @@ export async function registerRoutes(
       }
 
       const booking = await storage.createHotelBooking(req.body);
+
+      // Populate groupInventory so inventory dashboard, bleisure rate, and EWS work
+      storage.createGroupInventory({
+        eventId: booking.eventId,
+        inventoryType: "hotel",
+        hotelBookingId: booking.id,
+        roomsBlocked: booking.numberOfRooms,
+        roomsAvailable: booking.numberOfRooms,
+        negotiatedRate: req.body.negotiatedRate ?? null,
+        validFrom: booking.checkInDate,
+        validTo: booking.checkOutDate,
+      }).catch((e: Error) => console.error("[inventory] hotel sync failed:", e.message));
+
       res.status(201).json(booking);
     } catch (err: any) {
       console.error("Hotel booking error:", err);
@@ -404,6 +417,24 @@ export async function registerRoutes(
       }
 
       const travelOption = await storage.createTravelOption(req.body);
+
+      // Populate groupInventory for flight legs so seat inventory is tracked
+      if (travelOption.travelMode === "flight") {
+        const seatsAllocated: number =
+          req.body.tboFlightData?.adultCount ??
+          req.body.adults ??
+          1;
+        storage.createGroupInventory({
+          eventId: travelOption.eventId,
+          inventoryType: "flight",
+          travelOptionId: travelOption.id,
+          seatsAllocated,
+          seatsAvailable: seatsAllocated,
+          validFrom: travelOption.departureDate ?? undefined,
+          validTo: travelOption.returnDate ?? undefined,
+        }).catch((e: Error) => console.error("[inventory] flight sync failed:", e.message));
+      }
+
       res.status(201).json(travelOption);
     } catch (err: any) {
       console.error("Travel option error:", err);

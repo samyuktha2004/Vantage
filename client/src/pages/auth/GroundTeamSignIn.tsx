@@ -75,7 +75,7 @@ export default function GroundTeamSignIn() {
           <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
             <ShieldCheck className="w-6 h-6 text-primary" />
           </div>
-          <h1 className="text-2xl font-serif font-bold text-primary">Ground Team Sign In</h1>
+          <h1 className="text-2xl font-bold text-primary">Ground Team Sign In</h1>
           <p className="text-sm text-muted-foreground mt-1">
             For on-site event staff only
           </p>

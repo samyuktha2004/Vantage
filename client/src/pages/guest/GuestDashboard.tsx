@@ -19,6 +19,7 @@ import {
   AlertCircle,
   Sparkles,
   Edit,
+  ExternalLink,
 } from "lucide-react";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
@@ -104,6 +105,17 @@ export default function GuestDashboard() {
           <Badge variant="outline" className="text-xs border-primary/30 text-primary">
             Booking Ref: {guestData.bookingRef}
           </Badge>
+          {event?.coverMediaUrl && (
+            <a
+              href={event.coverMediaUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-primary underline underline-offset-2 hover:opacity-80"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              View Invite
+            </a>
+          )}
         </motion.div>
 
         {/* Quick edit cards */}

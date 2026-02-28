@@ -14,7 +14,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEvent } from "@/hooks/use-events";
 import { useLabels } from "@/hooks/use-labels";
 import { usePerks } from "@/hooks/use-perks";
-import { useRequests } from "@/hooks/use-requests";
+import { useRequests, useUpdateRequest } from "@/hooks/use-requests";
 import { useGuests } from "@/hooks/use-guests";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, Calendar, MapPin, Users, DollarSign, Tag, Inbox, Clock, Plus, Upload, FileSpreadsheet } from "lucide-react";
+import { Loader2, Calendar, MapPin, Users, DollarSign, Tag, Inbox, Clock, Plus, Upload, FileSpreadsheet, CheckCircle, XCircle } from "lucide-react";
 import { format } from "date-fns";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -42,6 +42,7 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
   const { data: perks } = usePerks(eventId);
   const { data: guests } = useGuests(eventId);
   const { data: requests } = useRequests(eventId);
+  const updateRequest = useUpdateRequest();
 
   // Cost breakdown
   const { data: costBreakdown } = useQuery({
@@ -211,7 +212,17 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
 
   const confirmedGuests = (guests ?? []).filter((g: any) => g.status === "confirmed").length;
   const pendingGuests = (guests ?? []).filter((g: any) => g.status === "pending").length;
-  const pendingRequests = (requests ?? []).filter((r: any) => r.status === "pending");
+  // Client sees requests forwarded to them for approval
+  const pendingRequests = (requests ?? []).filter((r: any) => r.status === "forwarded_to_client");
+
+  const handleClientDecision = async (requestId: number, decision: "approved" | "rejected") => {
+    try {
+      await updateRequest.mutateAsync({ id: requestId, status: decision });
+      toast({ title: decision === "approved" ? "Request Approved" : "Request Rejected" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -443,19 +454,19 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
       <div>
         <h3 className="text-lg font-medium flex items-center gap-2 mb-4">
           <Inbox className="w-5 h-5 text-primary" />
-          Pending Guest Requests
+          Requests Awaiting Your Approval
           {pendingRequests.length > 0 && (
             <Badge variant="destructive" className="text-xs">{pendingRequests.length}</Badge>
           )}
         </h3>
         {pendingRequests.length === 0 ? (
           <div className="text-center py-10 border-2 border-dashed rounded-xl text-muted-foreground text-sm">
-            No pending requests
+            No requests awaiting approval
           </div>
         ) : (
           <div className="space-y-3">
             {pendingRequests.map((req: any) => (
-              <Card key={req.id}>
+              <Card key={req.id} className="border-blue-200">
                 <CardContent className="p-4 flex items-center justify-between">
                   <div>
                     {req.guest?.name && (
@@ -468,10 +479,25 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
                     {req.budgetConsumed > 0 && (
                       <span className="text-sm font-semibold">₹{req.budgetConsumed.toLocaleString()}</span>
                     )}
-                    <Badge variant="secondary">
-                      <Clock className="w-3 h-3 mr-1" />
-                      Pending
-                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-red-200 text-red-700 hover:bg-red-50"
+                      onClick={() => handleClientDecision(req.id, "rejected")}
+                      disabled={updateRequest.isPending}
+                    >
+                      <XCircle className="w-4 h-4 mr-1" />
+                      Reject
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700"
+                      onClick={() => handleClientDecision(req.id, "approved")}
+                      disabled={updateRequest.isPending}
+                    >
+                      <CheckCircle className="w-4 h-4 mr-1" />
+                      Approve
+                    </Button>
                   </div>
                 </CardContent>
               </Card>

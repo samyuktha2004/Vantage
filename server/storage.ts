@@ -188,7 +188,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTravelSchedules(travelOptionId: number): Promise<TravelSchedule[]> {
-    return await db.select().from(travelSchedules).where(eq(travelSchedules.eventId, travelOptionId));
+    return await db.select().from(travelSchedules).where(eq(travelSchedules.travelOptionId, travelOptionId));
   }
 
   // Labels
@@ -430,12 +430,16 @@ export class InMemoryStorage implements IStorage {
 
   async createUser(user: UpsertUser): Promise<User> {
     const newUser: User = {
-      ...user,
       id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      email: user.email ?? null,
+      password: user.password ?? null,
+      firstName: user.firstName ?? null,
+      lastName: user.lastName ?? null,
+      role: user.role ?? "client",
+      eventCode: user.eventCode ?? null,
+      profileImageUrl: user.profileImageUrl ?? null,
       createdAt: new Date(),
       updatedAt: new Date(),
-      eventCode: null,
-      profileImageUrl: null,
     };
     this.users.push(newUser);
     return newUser;

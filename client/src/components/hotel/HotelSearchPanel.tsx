@@ -113,12 +113,21 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
         paymentMode: "Limit",
       });
 
+      // Validate and convert dates — append T00:00:00 to prevent UTC timezone shift
+      if (!searchParams.checkIn || !searchParams.checkOut) {
+        throw new Error("Check-in and check-out dates are required");
+      }
+      const checkInDate = new Date(searchParams.checkIn + "T00:00:00");
+      const checkOutDate = new Date(searchParams.checkOut + "T00:00:00");
+      if (isNaN(checkInDate.getTime())) throw new Error("Invalid check-in date");
+      if (isNaN(checkOutDate.getTime())) throw new Error("Invalid check-out date");
+
       // Save to DB via existing hotel-booking route with tboHotelData
       const payload = {
         eventId,
         hotelName: selectedHotel.HotelName,
-        checkInDate: new Date(searchParams.checkIn).toISOString(),
-        checkOutDate: new Date(searchParams.checkOut).toISOString(),
+        checkInDate: checkInDate.toISOString(),
+        checkOutDate: checkOutDate.toISOString(),
         numberOfRooms: searchParams.numberOfRooms,
         tboHotelData: {
           hotelCode: selectedHotel.HotelCode,

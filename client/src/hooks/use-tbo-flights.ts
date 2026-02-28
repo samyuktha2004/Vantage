@@ -14,6 +14,8 @@ async function apiFetch(url: string, body: Record<string, unknown>) {
   return res.json();
 }
 
+// ─── Pre-booking hooks ────────────────────────────────────────────────────────
+
 export function useTBOFlightSearch() {
   return useMutation({
     mutationFn: (body: {
@@ -45,6 +47,13 @@ export function useTBOFareRule() {
   });
 }
 
+export function useTBOSSR() {
+  return useMutation({
+    mutationFn: ({ traceId, resultIndex }: { traceId: string; resultIndex: string }) =>
+      apiFetch("/api/tbo/flight/ssr", { traceId, resultIndex }),
+  });
+}
+
 export function useTBOBookFlight() {
   return useMutation({
     mutationFn: (body: {
@@ -56,14 +65,67 @@ export function useTBOBookFlight() {
   });
 }
 
+// Ticket accepts two shapes — the route detects which flow based on fields present:
+//   LCC:     { traceId, resultIndex, passengers, fare }
+//   Non-LCC: { traceId, pnr, bookingId }
 export function useTBOTicket() {
   return useMutation({
+    mutationFn: (body:
+      | { traceId: string; resultIndex: string; passengers: unknown[]; fare: unknown }
+      | { traceId: string; pnr: string; bookingId: number }
+    ) => apiFetch("/api/tbo/flight/ticket", body as Record<string, unknown>),
+  });
+}
+
+// ─── Post-booking hooks ───────────────────────────────────────────────────────
+
+export function useTBOBookingDetails() {
+  return useMutation({
+    mutationFn: ({ bookingId, pnr }: { bookingId: number; pnr?: string }) =>
+      apiFetch("/api/tbo/flight/booking-details", {
+        bookingId,
+        ...(pnr ? { pnr } : {}),
+      }),
+  });
+}
+
+export function useTBOCancellationCharges() {
+  return useMutation({
+    mutationFn: ({ bookingId }: { bookingId: number }) =>
+      apiFetch("/api/tbo/flight/cancellation-charges", { bookingId }),
+  });
+}
+
+export function useTBOCancelFlight() {
+  return useMutation({
     mutationFn: (body: {
-      traceId: string;
-      resultIndex: string;
-      passengers: unknown[];
-      fare: unknown;
-      pnr: string;
-    }) => apiFetch("/api/tbo/flight/ticket", body as Record<string, unknown>),
+      bookingId: number;
+      remarks?: string;
+      sectors?: unknown[];
+      ticketIds?: unknown[];
+    }) => apiFetch("/api/tbo/flight/cancel", body as Record<string, unknown>),
+  });
+}
+
+export function useTBOReissue() {
+  return useMutation({
+    mutationFn: ({ bookingId, remarks }: { bookingId: number; remarks?: string }) =>
+      apiFetch("/api/tbo/flight/reissue", { bookingId, remarks }),
+  });
+}
+
+export function useTBOAncillary() {
+  return useMutation({
+    mutationFn: ({ traceId, resultIndex }: { traceId: string; resultIndex: string }) =>
+      apiFetch("/api/tbo/flight/ancillary", { traceId, resultIndex }),
+  });
+}
+
+// ─── Utility hooks ────────────────────────────────────────────────────────────
+
+export function useTBOReleasePNR() {
+  return useMutation({
+    mutationFn: ({ bookingId, source = 1 }: { bookingId: number; source?: number }) =>
+      apiFetch("/api/tbo/flight/release-pnr", { bookingId, source }),
   });
 }

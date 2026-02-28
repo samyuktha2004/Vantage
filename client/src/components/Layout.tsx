@@ -27,7 +27,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside className="w-64 bg-primary text-primary-foreground hidden md:flex flex-col fixed inset-y-0 top-[52px]">
         <div className="p-8">
-          <h1 className="text-2xl font-serif italic text-secondary">Vantage</h1>
+          <h1 className="text-2xl italic font-bold text-secondary">Vantage</h1>
           <p className="text-xs text-primary-foreground/60 mt-1 uppercase tracking-widest">Hospitality</p>
         </div>
 

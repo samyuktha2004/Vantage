@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, ArrowRight, Check, Loader2, Zap, PenLine, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, Zap, PenLine, CheckCircle2, Plus, X, Plane, TrainFront, Car, Bus, Ship } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { HotelSearchPanel } from "@/components/hotel/HotelSearchPanel";
@@ -33,22 +34,10 @@ const hotelBookingSchema = z.object({
   numberOfRooms: z.number().min(1, "At least 1 room is required"),
 });
 
-// Step 3: Travel Options
-const travelOptionsSchema = z.object({
-  hasFlight: z.boolean().default(false),
-  hasTrain: z.boolean().default(false),
-  departureDate: z.date().optional(),
-  returnDate: z.date().optional(),
-  fromLocation: z.string().optional(),
-  toLocation: z.string().optional(),
-});
-
 type ClientDetailsFormValues = z.infer<typeof clientDetailsSchema>;
 type HotelBookingFormValues = z.infer<typeof hotelBookingSchema>;
-type TravelOptionsFormValues = z.infer<typeof travelOptionsSchema>;
 
 type HotelMode = "tbo" | "manual";
-type FlightMode = "tbo" | "manual";
 
 export default function EventSetup() {
   const { id } = useParams();
@@ -58,13 +47,32 @@ export default function EventSetup() {
   const [eventData, setEventData] = useState<any>(null);
   const { toast } = useToast();
 
-  // TBO vs Manual mode for hotel/flight steps
-  const [hotelMode, setHotelMode] = useState<HotelMode>("tbo");
-  const [flightMode, setFlightMode] = useState<FlightMode>("tbo");
+  // Step 1 — invite URL (writes to events.coverMediaUrl via PATCH)
+  const [inviteUrl, setInviteUrl] = useState("");
 
-  // Track if TBO booking completed (skip manual form)
+  // TBO vs Manual mode for hotel step
+  const [hotelMode, setHotelMode] = useState<HotelMode>("tbo");
   const [hotelBooked, setHotelBooked] = useState(false);
-  const [flightBooked, setFlightBooked] = useState(false);
+
+  // Step 3 — multi-transport state
+  interface BookedTransport {
+    id: string;
+    mode: string;
+    from: string;
+    to: string;
+    date: string;
+    source: "tbo" | "manual";
+  }
+  const [bookedTransports, setBookedTransports] = useState<BookedTransport[]>([]);
+  const [addPanelOpen, setAddPanelOpen] = useState(false);
+  const [addType, setAddType] = useState<"tbo" | "manual" | null>(null);
+  // Manual transport form state
+  const [manualMode, setManualMode] = useState("flight");
+  const [manualFrom, setManualFrom] = useState("");
+  const [manualTo, setManualTo] = useState("");
+  const [manualDate, setManualDate] = useState("");
+  const [manualReturn, setManualReturn] = useState("");
+  const [isSavingManual, setIsSavingManual] = useState(false);
 
   const clientForm = useForm<ClientDetailsFormValues>({
     resolver: zodResolver(clientDetailsSchema),
@@ -85,14 +93,6 @@ export default function EventSetup() {
       numberOfRooms: 1,
       checkInDate: "",
       checkOutDate: "",
-    },
-  });
-
-  const travelForm = useForm<TravelOptionsFormValues>({
-    resolver: zodResolver(travelOptionsSchema),
-    defaultValues: {
-      hasFlight: false,
-      hasTrain: false,
     },
   });
 
@@ -125,7 +125,17 @@ export default function EventSetup() {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to save client details");
       }
-      
+
+      // Persist invite URL to events.coverMediaUrl if provided
+      if (inviteUrl.trim()) {
+        await fetch(`/api/events/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ coverMediaUrl: inviteUrl.trim() }),
+        });
+      }
+
       toast({
         title: "Success",
         description: "Client details saved successfully"
@@ -193,72 +203,52 @@ export default function EventSetup() {
     }
   };
 
-  const onTravelOptionsSubmit = async (data: TravelOptionsFormValues) => {
-    setIsSubmitting(true);
+
+  const TRANSPORT_MODES = [
+    { value: "flight", label: "Flight", Icon: Plane },
+    { value: "train", label: "Train", Icon: TrainFront },
+    { value: "bus", label: "Bus", Icon: Bus },
+    { value: "car", label: "Car / Cab", Icon: Car },
+    { value: "ferry", label: "Ferry / Cruise", Icon: Ship },
+  ];
+
+  const handleSaveManualTransport = async () => {
+    if (!manualFrom || !manualTo || !manualDate) {
+      toast({ title: "Missing fields", description: "From, To and date are required.", variant: "destructive" });
+      return;
+    }
+    setIsSavingManual(true);
     try {
-      const travelModes = [];
-      if (data.hasFlight) travelModes.push("flight");
-      if (data.hasTrain) travelModes.push("train");
+      const payload: any = {
+        eventId: Number(id),
+        travelMode: manualMode,
+        fromLocation: manualFrom,
+        toLocation: manualTo,
+        departureDate: new Date(manualDate).toISOString(),
+      };
+      if (manualReturn) payload.returnDate = new Date(manualReturn).toISOString();
 
-      // Only submit if at least one travel mode is selected
-      if (travelModes.length === 0) {
-        toast({
-          title: "No travel mode selected",
-          description: "Please select at least one travel option or skip this step",
-          variant: "destructive"
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      for (const mode of travelModes) {
-        const payload: any = {
-          eventId: Number(id),
-          travelMode: mode,
-        };
-
-        // Only include dates and locations if they are provided
-        if (data.departureDate) {
-          payload.departureDate = data.departureDate instanceof Date ? data.departureDate.toISOString() : data.departureDate;
-        }
-        if (data.returnDate) {
-          payload.returnDate = data.returnDate instanceof Date ? data.returnDate.toISOString() : data.returnDate;
-        }
-        if (data.fromLocation && data.fromLocation.trim()) {
-          payload.fromLocation = data.fromLocation;
-        }
-        if (data.toLocation && data.toLocation.trim()) {
-          payload.toLocation = data.toLocation;
-        }
-
-        const response = await fetch(`/api/events/${id}/travel-options`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || `Failed to save ${mode} options`);
-        }
-      }
-
-      toast({
-        title: "Success",
-        description: "Travel options saved successfully"
+      const res = await fetch(`/api/events/${id}/travel-options`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
       });
-      
-      // Navigate to preview page
-      navigate(`/events/${id}/preview`);
-    } catch (error: any) {
-      console.error("Error saving travel options:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to save travel options",
-        variant: "destructive"
-      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message ?? "Failed to save transport");
+      }
+      setBookedTransports((prev) => [
+        ...prev,
+        { id: `manual-${Date.now()}`, mode: manualMode, from: manualFrom, to: manualTo, date: manualDate, source: "manual" },
+      ]);
+      setManualFrom(""); setManualTo(""); setManualDate(""); setManualReturn("");
+      setAddPanelOpen(false); setAddType(null);
+      toast({ title: "Transport added", description: `${manualMode} from ${manualFrom} → ${manualTo}` });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
-      setIsSubmitting(false);
+      setIsSavingManual(false);
     }
   };
 
@@ -361,6 +351,19 @@ export default function EventSetup() {
                       </FormItem>
                     )}
                   />
+
+                  {/* Invite URL — optional, stored in events.coverMediaUrl */}
+                  <div className="space-y-1.5">
+                    <FormLabel>Invite Link <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                    <Input
+                      placeholder="https://drive.google.com/... or Canva link"
+                      value={inviteUrl}
+                      onChange={(e) => setInviteUrl(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Paste a Google Drive, Canva, or any URL — shown to guests as "View Invite"
+                    </p>
+                  </div>
 
                   <div className="space-y-4">
                     <FormLabel>Guest Categories</FormLabel>
@@ -580,228 +583,184 @@ export default function EventSetup() {
           </Card>
         )}
 
-        {/* Step 3: Travel Options */}
+        {/* Step 3: Travel Options — multi-transport add pattern */}
         {currentStep === 3 && (
           <Card>
             <CardHeader>
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="font-serif">Travel Options</CardTitle>
-                  <CardDescription>Search live flights via TBO or enter travel details manually</CardDescription>
-                </div>
-                {flightBooked && (
-                  <Badge className="bg-green-100 text-green-700 border-green-300 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Flight booked via TBO
-                  </Badge>
-                )}
-              </div>
-
-              {/* Mode tabs */}
-              <div className="flex gap-2 mt-4">
-                <button
-                  onClick={() => setFlightMode("tbo")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium border transition-colors ${
-                    flightMode === "tbo"
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-input text-muted-foreground hover:border-primary/50"
-                  }`}
-                >
-                  <Zap className="w-3.5 h-3.5" /> Live TBO Search
-                </button>
-                <button
-                  onClick={() => setFlightMode("manual")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium border transition-colors ${
-                    flightMode === "manual"
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-input text-muted-foreground hover:border-primary/50"
-                  }`}
-                >
-                  <PenLine className="w-3.5 h-3.5" /> Enter Manually
-                </button>
-              </div>
+              <CardTitle className="font-serif">Travel Options</CardTitle>
+              <CardDescription>
+                Add one or more transport legs for the group — flights via TBO live booking or any mode manually.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              {flightMode === "tbo" && !flightBooked && (
-                <div className="space-y-4">
-                  <FlightSearchPanel
-                    eventId={Number(id)}
-                    onBooked={() => {
-                      setFlightBooked(true);
-                      navigate(`/events/${id}/preview`);
-                    }}
-                  />
-                  <div className="flex justify-between pt-4 border-t">
-                    <Button type="button" variant="outline" onClick={() => setCurrentStep(2)}>
-                      <ArrowLeft className="w-4 h-4 mr-2" /> Back
-                    </Button>
-                    <Button variant="ghost" onClick={() => navigate(`/events/${id}/preview`)}>
-                      Skip & Preview
-                    </Button>
-                  </div>
+            <CardContent className="space-y-4">
+
+              {/* ── Booked transport list ── */}
+              {bookedTransports.length > 0 && (
+                <div className="space-y-2">
+                  {bookedTransports.map((t) => {
+                    const ModeIcon = TRANSPORT_MODES.find((m) => m.value === t.mode)?.Icon ?? Plane;
+                    return (
+                      <div key={t.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                        <div className="flex items-center gap-3">
+                          <ModeIcon className="w-4 h-4 text-primary" />
+                          <div>
+                            <p className="text-sm font-medium capitalize">
+                              {t.mode} — {t.from} → {t.to}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {t.date} · {t.source === "tbo" ? "TBO booked" : "Manual"}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost" size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => setBookedTransports((prev) => prev.filter((x) => x.id !== t.id))}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
-              {flightMode === "tbo" && flightBooked && (
-                <div className="text-center py-6 space-y-3">
-                  <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
-                  <p className="font-semibold text-green-700">Flight booked successfully via TBO</p>
-                  <Button onClick={() => navigate(`/events/${id}/preview`)}>
-                    Preview Event <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </div>
-              )}
-
-              {flightMode === "manual" && (
-              <Form {...travelForm}>
-                <form onSubmit={travelForm.handleSubmit(onTravelOptionsSubmit)} className="space-y-6">
-                  <div className="space-y-4">
-                    <FormLabel>Travel Modes</FormLabel>
-                    <FormField
-                      control={travelForm.control}
-                      name="hasFlight"
-                      render={({ field }) => (
-                        <FormItem className="flex items-center space-x-2 space-y-0">
-                          <FormControl>
-                            <Checkbox
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
-                          </FormControl>
-                          <FormLabel className="font-normal cursor-pointer">
-                            Flight
-                          </FormLabel>
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={travelForm.control}
-                      name="hasTrain"
-                      render={({ field }) => (
-                        <FormItem className="flex items-center space-x-2 space-y-0">
-                          <FormControl>
-                            <Checkbox
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
-                          </FormControl>
-                          <FormLabel className="font-normal cursor-pointer">
-                            Train
-                          </FormLabel>
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  {(travelForm.watch("hasFlight") || travelForm.watch("hasTrain")) && (
-                    <>
-                      <div className="grid grid-cols-2 gap-4">
-                        <FormField
-                          control={travelForm.control}
-                          name="fromLocation"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>From Location</FormLabel>
-                              <FormControl>
-                                <Input placeholder="New York" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={travelForm.control}
-                          name="toLocation"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>To Location</FormLabel>
-                              <FormControl>
-                                <Input placeholder="Paris" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+              {/* ── Add panel ── */}
+              {addPanelOpen ? (
+                <div className="border rounded-lg p-4 space-y-4 bg-muted/10">
+                  {/* Type selector */}
+                  {!addType && (
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium">How would you like to add this transport?</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setAddType("tbo")}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded text-sm font-medium border border-primary bg-primary text-primary-foreground"
+                        >
+                          <Zap className="w-3.5 h-3.5" /> Live TBO Flight
+                        </button>
+                        <button
+                          onClick={() => setAddType("manual")}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded text-sm font-medium border hover:border-primary/50"
+                        >
+                          <PenLine className="w-3.5 h-3.5" /> Enter Manually
+                        </button>
+                        <button
+                          onClick={() => { setAddPanelOpen(false); setAddType(null); }}
+                          className="ml-auto flex items-center gap-1 px-2 py-1 text-sm text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="w-3.5 h-3.5" /> Cancel
+                        </button>
                       </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <FormField
-                          control={travelForm.control}
-                          name="departureDate"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Departure Date</FormLabel>
-                              <FormControl>
-                                <Input
-                                  type="date"
-                                  value={field.value instanceof Date && !isNaN(field.value.getTime())
-                                    ? field.value.toISOString().split('T')[0]
-                                    : ""}
-                                  onChange={(e) => {
-                                    const date = e.target.value ? new Date(e.target.value) : undefined;
-                                    field.onChange(date);
-                                  }}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={travelForm.control}
-                          name="returnDate"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Return Date</FormLabel>
-                              <FormControl>
-                                <Input
-                                  type="date"
-                                  value={field.value instanceof Date && !isNaN(field.value.getTime())
-                                    ? field.value.toISOString().split('T')[0]
-                                    : ""}
-                                  onChange={(e) => {
-                                    const date = e.target.value ? new Date(e.target.value) : undefined;
-                                    field.onChange(date);
-                                  }}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                    </>
+                    </div>
                   )}
 
-                  <div className="flex justify-between">
-                    <Button type="button" variant="outline" onClick={() => setCurrentStep(2)}>
-                      <ArrowLeft className="w-4 h-4 mr-2" /> Back
-                    </Button>
-                    <div className="flex gap-2">
-                      <Button 
-                        type="button" 
-                        variant="outline" 
-                        onClick={() => navigate(`/events/${id}/preview`)}
-                      >
-                        Skip & Preview
-                      </Button>
-                      <Button type="submit" disabled={isSubmitting}>
-                        {isSubmitting ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Saving...
-                          </>
-                        ) : (
-                          "Complete Setup"
-                        )}
+                  {/* TBO flight search */}
+                  {addType === "tbo" && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-primary" /> TBO Live Flight Search</p>
+                        <button onClick={() => { setAddPanelOpen(false); setAddType(null); }} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><X className="w-3 h-3" /> Cancel</button>
+                      </div>
+                      <FlightSearchPanel
+                        eventId={Number(id)}
+                        onBooked={(data) => {
+                          setBookedTransports((prev) => [
+                            ...prev,
+                            {
+                              id: `tbo-${Date.now()}`,
+                              mode: "flight",
+                              from: data.fromLocation,
+                              to: data.toLocation,
+                              date: data.departureDate,
+                              source: "tbo",
+                            },
+                          ]);
+                          setAddPanelOpen(false);
+                          setAddType(null);
+                          toast({ title: "Flight booked!", description: `${data.fromLocation} → ${data.toLocation} via TBO` });
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Manual transport form */}
+                  {addType === "manual" && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium flex items-center gap-1.5"><PenLine className="w-3.5 h-3.5" /> Manual Transport</p>
+                        <button onClick={() => { setAddPanelOpen(false); setAddType(null); }} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><X className="w-3 h-3" /> Cancel</button>
+                      </div>
+
+                      {/* Mode selector */}
+                      <div className="flex flex-wrap gap-2">
+                        {TRANSPORT_MODES.map(({ value, label, Icon }) => (
+                          <button
+                            key={value}
+                            onClick={() => setManualMode(value)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm border transition-colors ${
+                              manualMode === value
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "border-input text-muted-foreground hover:border-primary/50"
+                            }`}
+                          >
+                            <Icon className="w-3.5 h-3.5" /> {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label>From</Label>
+                          <Input placeholder="Mumbai" value={manualFrom} onChange={(e) => setManualFrom(e.target.value)} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>To</Label>
+                          <Input placeholder="Dubai" value={manualTo} onChange={(e) => setManualTo(e.target.value)} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Departure Date</Label>
+                          <Input type="date" value={manualDate} onChange={(e) => setManualDate(e.target.value)} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Return Date <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                          <Input type="date" value={manualReturn} onChange={(e) => setManualReturn(e.target.value)} />
+                        </div>
+                      </div>
+
+                      <Button onClick={handleSaveManualTransport} disabled={isSavingManual} className="w-full">
+                        {isSavingManual ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving…</> : "Add Transport"}
                       </Button>
                     </div>
-                  </div>
-                </form>
-              </Form>
+                  )}
+                </div>
+              ) : (
+                /* ── + Add Transport button ── */
+                <Button
+                  variant="outline"
+                  className="w-full border-dashed"
+                  onClick={() => { setAddPanelOpen(true); setAddType(null); }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  {bookedTransports.length === 0 ? "Add Transport Option" : "Add Another Transport Leg"}
+                </Button>
               )}
+
+              {/* ── Footer actions ── */}
+              <div className="flex justify-between pt-4 border-t">
+                <Button type="button" variant="outline" onClick={() => setCurrentStep(2)}>
+                  <ArrowLeft className="w-4 h-4 mr-2" /> Back
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="ghost" onClick={() => navigate(`/events/${id}/preview`)}>
+                    Skip & Preview
+                  </Button>
+                  <Button onClick={() => navigate(`/events/${id}/preview`)} disabled={bookedTransports.length === 0}>
+                    Complete Setup <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </div>
+              </div>
+
             </CardContent>
           </Card>
         )}

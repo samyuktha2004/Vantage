@@ -63,8 +63,8 @@ export default function AgentSignIn() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] flex flex-col">
-      <Navigation />
+    <div className="min-h-screen bg-background flex flex-col">
+      <Navigation showBack={false} showHome={true} />
       <div className="flex-1 flex items-center justify-center px-6">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -72,7 +72,7 @@ export default function AgentSignIn() {
         className="w-full max-w-md"
       >
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-serif font-bold text-primary mb-2">Agent Sign In</h1>
+          <h1 className="text-4xl font-bold text-primary mb-2">Agent Sign In</h1>
           <p className="text-muted-foreground">Access your event management dashboard</p>
         </div>
 
@@ -107,6 +107,17 @@ export default function AgentSignIn() {
                 )}
               />
 
+              <div className="-mt-3 text-right">
+                <button
+                  type="button"
+                  className="text-sm text-primary hover:underline"
+                  onClick={() => {}}
+                  aria-label="Forgot password"
+                >
+                  Forgot password?
+                </button>
+              </div>
+
               {error && (
                 <div className="text-sm text-red-500 text-center">{error}</div>
               )}
@@ -130,12 +141,6 @@ export default function AgentSignIn() {
               </div>
             </form>
           </Form>
-        </div>
-
-        <div className="text-center mt-6">
-          <a href="/" className="text-sm text-muted-foreground hover:text-primary">
-            ← Back to Home
-          </a>
         </div>
       </motion.div>
       </div>

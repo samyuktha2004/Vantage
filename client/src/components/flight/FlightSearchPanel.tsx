@@ -15,6 +15,7 @@ import {
   useTBOFlightSearch,
   useTBOFareQuote,
   useTBOBookFlight,
+  useTBOTicket,
 } from "@/hooks/use-tbo-flights";
 import { FlightResultsList, type FlightResult } from "./FlightResultsList";
 import { FlightDetailCard } from "./FlightDetailCard";
@@ -73,6 +74,7 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
   const flightSearch = useTBOFlightSearch();
   const fareQuote = useTBOFareQuote();
   const bookFlight = useTBOBookFlight();
+  const issueTicket = useTBOTicket();
 
   const handleSearch = async () => {
     if (!searchParams.origin || !searchParams.destination || !searchParams.departureDate) {
@@ -93,8 +95,13 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
         cabinClass: searchParams.cabinClass,
       });
 
-      const tid = result?.traceId ?? result?.TraceId ?? "";
-      const results: FlightResult[] = result?.results ?? result?.Results ?? [];
+      // TBO wraps all responses in a "Response" envelope
+      const tid: string = result?.Response?.TraceId ?? "";
+      // Results is FlightResult[][] — take the first flight from each group
+      const rawResults: any[][] = result?.Response?.Results ?? [];
+      const results: FlightResult[] = rawResults
+        .map((group: any[]) => group[0])
+        .filter(Boolean);
       setTraceId(tid);
       setFlightResults(results);
       setPhase("results");
@@ -119,56 +126,97 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
     if (!selectedFlight) return;
     setIsConfirming(true);
     try {
-      // For group booking, we book with a placeholder agent passenger
-      // Actual guest details are collected via guest portal
-      const placeholderPassenger = {
-        Title: "Mr",
-        FirstName: "Group",
-        LastName: "Booking",
-        PaxType: 1,
-        DateOfBirth: "1990-01-01T00:00:00",
-        Gender: "1",
-        PassportNo: "",
-        PassportExpiry: "",
-        AddressLine1: "Group Booking",
-        City: "City",
-        CountryCode: "IN",
-        CountryName: "India",
-        Nationality: "IN",
-        ContactNo: "9999999999",
-        Email: "group@booking.com",
-        IsLeadPax: true,
-        Fare: fareQuoteData?.Fare ?? selectedFlight.Fare,
-      };
+      const fare = fareQuoteData?.Fare ?? selectedFlight.Fare;
+      const isLCC: boolean = (selectedFlight as any).IsLCC === true;
 
-      const bookResult = await bookFlight.mutateAsync({
+      // Placeholder passenger — real guest details collected via guest portal
+      const buildPassengers = (count: number, isLead = true) =>
+        Array.from({ length: count }, (_, i) => ({
+          Title: "Mr",
+          FirstName: "Group",
+          LastName: "Booking",
+          PaxType: 1,
+          DateOfBirth: "1990-01-01T00:00:00",
+          Gender: "1",
+          PassportNo: "",
+          PassportExpiry: "",
+          AddressLine1: "Group Booking",
+          City: "City",
+          CountryCode: "IN",
+          CountryName: "India",
+          Nationality: "IN",
+          ContactNo: "9999999999",
+          Email: "group@booking.com",
+          IsLeadPax: i === 0 && isLead,
+          Fare: fare,
+          // LCC requires SSR stubs (TBO rejects ticket without them)
+          Baggage: [],
+          MealDynamic: [],
+          SeatDynamic: [],
+        }));
+
+      let pnr = "PENDING";
+      let bookingId: number | undefined;
+      let ticketResult: any;
+
+      if (isLCC) {
+        // LCC flow: Ticket directly (no Book step)
+        // Request shape: { traceId, resultIndex, passengers, fare }
+        ticketResult = await issueTicket.mutateAsync({
+          traceId,
+          resultIndex: selectedFlight.ResultIndex,
+          passengers: buildPassengers(searchParams.adults),
+          fare,
+        });
+        pnr = ticketResult?.Response?.PNR ?? ticketResult?.PNR ?? "PENDING";
+      } else {
+        // Non-LCC/GDS flow: Book → get PNR+BookingId → Ticket
+        // Ticket request shape: { traceId, pnr, bookingId }
+        const bookResult = await bookFlight.mutateAsync({
+          traceId,
+          resultIndex: selectedFlight.ResultIndex,
+          passengers: buildPassengers(searchParams.adults),
+          fare,
+        });
+        pnr = bookResult?.Response?.PNR ?? bookResult?.PNR ?? "PENDING";
+        bookingId = bookResult?.Response?.BookingId ?? bookResult?.BookingId;
+
+        ticketResult = await issueTicket.mutateAsync({
+          traceId,
+          pnr,
+          bookingId: bookingId!,
+        });
+      }
+
+      // Validate and convert dates — append T00:00:00 to prevent UTC timezone shift
+      if (!searchParams.departureDate) throw new Error("Departure date is required");
+      const departureDate = new Date(searchParams.departureDate + "T00:00:00");
+      const returnDate = searchParams.returnDate
+        ? new Date(searchParams.returnDate + "T00:00:00")
+        : undefined;
+      if (isNaN(departureDate.getTime())) throw new Error("Invalid departure date");
+      if (returnDate && isNaN(returnDate.getTime())) throw new Error("Invalid return date");
+
+      // Save to DB via existing travel-options route
+      const tboFlightData = {
         traceId,
         resultIndex: selectedFlight.ResultIndex,
-        passengers: Array.from({ length: searchParams.adults }, (_, i) => ({
-          ...placeholderPassenger,
-          IsLeadPax: i === 0,
-        })),
-        fare: fareQuoteData?.Fare ?? selectedFlight.Fare,
-      });
+        isLCC,
+        pnr,
+        bookingId,
+        ticketResponse: ticketResult,
+        fareQuote: fareQuoteData,
+        flight: selectedFlight,
+      };
 
-      const pnr = bookResult?.Response?.PNR ?? bookResult?.PNR ?? "PENDING";
-
-      // Save to DB via existing travel-options route with tboFlightData
       const payload = {
         eventId,
         travelMode: "flight",
         fromLocation: searchParams.origin,
         toLocation: searchParams.destination,
-        departureDate: new Date(searchParams.departureDate).toISOString(),
-        returnDate: searchParams.returnDate ? new Date(searchParams.returnDate).toISOString() : undefined,
-        tboFlightData: {
-          traceId,
-          resultIndex: selectedFlight.ResultIndex,
-          pnr,
-          bookingResponse: bookResult,
-          fareQuote: fareQuoteData,
-          flight: selectedFlight,
-        },
+        departureDate: departureDate.toISOString(),
+        returnDate: returnDate?.toISOString(),
+        tboFlightData,
       };
 
       const res = await fetch(`/api/events/${eventId}/travel-options`, {
@@ -193,7 +241,7 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
         toLocation: searchParams.destination,
         departureDate: searchParams.departureDate,
         returnDate: searchParams.returnDate,
-        tboFlightData: payload.tboFlightData,
+        tboFlightData,
       });
     } catch (err: any) {
       toast({ title: "Booking failed", description: err.message, variant: "destructive" });
@@ -354,7 +402,7 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
         infants={searchParams.infants}
         onConfirm={handleConfirmBooking}
         onBack={() => setPhase("detail")}
-        isLoading={isConfirming}
+        isLoading={isConfirming || bookFlight.isPending || issueTicket.isPending}
       />
     );
   }

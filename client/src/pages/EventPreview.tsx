@@ -78,7 +78,7 @@ export default function EventPreview() {
   if (isLoading) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-full min-h-[500px]">
+        <div className="flex items-center justify-center h-full min-h-[320px] sm:min-h-[500px]">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       </DashboardLayout>

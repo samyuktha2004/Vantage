@@ -31,9 +31,13 @@ export function useCreateEvent() {
   return useMutation({
     mutationFn: async (data: EventInput) => {
       // Ensure date is properly converted if it's a string
+      const dateValue = new Date(data.date);
+      if (isNaN(dateValue.getTime())) {
+        throw new Error("Invalid date provided");
+      }
       const payload = {
         ...data,
-        date: new Date(data.date).toISOString() as any // Send ISO string for Zod coerce
+        date: dateValue.toISOString() as any // Send ISO string for Zod coerce
       };
       
       const res = await fetch(api.events.create.path, {

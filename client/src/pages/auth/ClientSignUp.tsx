@@ -58,7 +58,7 @@ export default function ClientSignUp() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col">
       <Navigation />
       <div className="flex-1 flex items-center justify-center px-6">
       <motion.div
@@ -67,7 +67,7 @@ export default function ClientSignUp() {
         className="w-full max-w-md"
       >
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-serif font-bold text-primary mb-2">Client Sign Up</h1>
+          <h1 className="text-4xl font-bold text-primary mb-2">Client Sign Up</h1>
           <p className="text-muted-foreground">Create your account to access events</p>
         </div>
 

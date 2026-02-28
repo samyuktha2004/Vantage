@@ -80,7 +80,7 @@ export default function GuestTravel({ token }: { token: string }) {
         <div className="flex justify-end">
           <Button 
             className="btn-primary px-8 h-12 text-lg rounded-full"
-            onClick={() => setLocation(`/guest/concierge?ref=${ref}`)}
+            onClick={() => setLocation(`/guest/concierge?ref=${token}`)}
           >
             Continue to Concierge <ChevronRight className="ml-2 w-5 h-5" />
           </Button>

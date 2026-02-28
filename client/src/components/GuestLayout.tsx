@@ -19,14 +19,14 @@ export function GuestLayout({ children, step, token }: GuestLayoutProps) {
   ];
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] text-foreground font-sans selection:bg-accent/30">
+    <div className="min-h-screen bg-background text-foreground font-sans selection:bg-accent/30">
       <Navigation />
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-md sticky top-[52px] z-50 border-b border-border/40">
         <div className="max-w-5xl mx-auto px-4 h-20 flex items-center justify-between">
           <Link href="/">
             <div className="flex items-baseline gap-1 cursor-pointer">
-              <span className="font-serif text-2xl font-bold text-primary italic">Vantage</span>
+              <span className="text-2xl font-bold text-primary italic">Vantage</span>
             </div>
           </Link>
 

@@ -121,7 +121,7 @@ export const guests = pgTable("guests", {
   specialRequests: text("special_requests"),
   bookingRef: text("booking_ref").notNull().unique(), // Simple code for lookup
   accessToken: text("access_token").notNull().unique(), // Secure token for guest portal access
-  status: text("status").default("pending").notNull(), // pending, confirmed, declined
+  status: text("status").default("pending").notNull(), // pending, confirmed, declined, arrived
   // Fixed Travel Details (Read-only for guest)
   arrivalDate: timestamp("arrival_date"),
   departureDate: timestamp("departure_date"),

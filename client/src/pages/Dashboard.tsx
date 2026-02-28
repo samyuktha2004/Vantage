@@ -45,6 +45,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
 
 const createEventFormSchema = insertEventSchema.pick({
   name: true,
@@ -65,6 +66,7 @@ type EventCodeFormValues = z.infer<typeof eventCodeSchema>;
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const isAgent = user?.role === "agent";
   const isClient = user?.role === "client";
 
@@ -103,8 +105,7 @@ export default function Dashboard() {
       name: "",
       location: "",
       description: "",
-      eventCode: "",
-      // Date handling usually needs string for input type="date"
+      clientName: "",
     },
   });
 
@@ -126,7 +127,7 @@ export default function Dashboard() {
       navigate(`/events/${result.id}/setup`);
     } catch (error: any) {
       console.error("Failed to create event", error);
-      alert(`Error: ${error.message || "Failed to create event"}`);
+      toast({ title: "Error", description: error.message || "Failed to create event", variant: "destructive" });
     }
   };
 
@@ -157,14 +158,14 @@ export default function Dashboard() {
       setDeleteEventId(null);
     } catch (error: any) {
       console.error("Failed to delete event", error);
-      alert(`Error: ${error.message || "Failed to delete event"}`);
+      toast({ title: "Error", description: error.message || "Failed to delete event", variant: "destructive" });
     }
   };
 
   if (isLoading) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-full min-h-[500px]">
+        <div className="flex items-center justify-center h-full min-h-[320px] sm:min-h-[500px]">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       </DashboardLayout>
@@ -177,7 +178,7 @@ export default function Dashboard() {
       <Dialog open={isEventCodeDialogOpen} onOpenChange={setIsEventCodeDialogOpen}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
-            <DialogTitle className="font-serif text-2xl">Enter Event Code</DialogTitle>
+            <DialogTitle className="text-2xl font-bold">Enter Event Code</DialogTitle>
             <DialogDescription>
               Please enter the event code provided by your agent to access your event.
             </DialogDescription>
@@ -210,7 +211,7 @@ export default function Dashboard() {
 
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-serif text-primary mb-2">Welcome back, {user?.firstName}</h1>
+          <h1 className="text-3xl font-bold text-primary mb-2">Welcome back, {user?.firstName}</h1>
           <p className="text-muted-foreground">
             {isAgent ? "Manage your events and logistics." : "Your events are listed below."}
           </p>
@@ -234,7 +235,7 @@ export default function Dashboard() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
-                <DialogTitle className="font-serif text-2xl">Create New Event</DialogTitle>
+                <DialogTitle className="text-2xl font-bold">Create New Event</DialogTitle>
                 <DialogDescription>
                   Set up the basics for your new event.
                 </DialogDescription>
@@ -277,9 +278,22 @@ export default function Dashboard() {
                       <FormItem>
                         <FormLabel>Date</FormLabel>
                         <FormControl>
-                          <Input type="datetime-local" {...field} 
-                            value={field.value ? new Date(field.value).toISOString().slice(0, 16) : ""}
-                            onChange={(e) => field.onChange(new Date(e.target.value))}
+                          <Input
+                            type="datetime-local"
+                            value={(() => {
+                              if (field.value instanceof Date && !isNaN(field.value.getTime())) {
+                                return field.value.toISOString().slice(0, 16);
+                              }
+                              if (typeof field.value === "string" && field.value) {
+                                const d = new Date(field.value);
+                                return !isNaN(d.getTime()) ? d.toISOString().slice(0, 16) : "";
+                              }
+                              return "";
+                            })()}
+                            onChange={(e) => {
+                              const d = e.target.value ? new Date(e.target.value) : undefined;
+                              field.onChange(d);
+                            }}
                           />
                         </FormControl>
                         <FormMessage />
@@ -360,7 +374,7 @@ export default function Dashboard() {
         </div>
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {events?.map((event) => (
+          {events?.map((event: any) => (
             <div key={event.id} className="group bg-white rounded-2xl p-6 border border-border/50 shadow-sm hover:shadow-lg hover:border-primary/20 transition-all h-full flex flex-col">
               <div className="flex justify-between items-start mb-4">
                 <div className="p-3 bg-secondary/30 rounded-xl text-primary group-hover:scale-110 transition-transform">
@@ -395,7 +409,7 @@ export default function Dashboard() {
               
               <Link href={`/events/${event.id}`}>
                 <div className="cursor-pointer">
-                  <h3 className="text-xl font-serif font-bold text-primary mb-2 line-clamp-1">{event.name}</h3>
+                  <h3 className="text-xl font-bold text-primary mb-2 line-clamp-1">{event.name}</h3>
                   
                   <div className="space-y-2 mt-auto text-sm text-muted-foreground">
                     <div className="flex items-center gap-2">
