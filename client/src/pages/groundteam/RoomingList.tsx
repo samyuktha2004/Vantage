@@ -17,6 +17,12 @@ async function fetchGuests(eventId: string) {
   return res.json();
 }
 
+async function fetchEvent(eventId: string) {
+  const res = await fetch(`/api/events/${eventId}`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed");
+  return res.json();
+}
+
 function TransportIcon({ mode }: { mode?: string }) {
   if (mode === "train") return <Train className="w-3 h-3" />;
   if (mode === "other") return <Bus className="w-3 h-3" />;
@@ -47,6 +53,13 @@ export default function RoomingList() {
     enabled: !!eventId,
   });
 
+  const { data: event } = useQuery({
+    queryKey: ["ground-event", eventId],
+    queryFn: () => fetchEvent(eventId),
+    enabled: !!eventId,
+    staleTime: 60000,
+  });
+
   // Group by arrival date (simplified)
   const confirmed = (guests as any[]).filter(
     (g: any) => g.rsvpStatus === "confirmed" || g.status === "confirmed" || g.status === "arrived"
@@ -65,17 +78,15 @@ export default function RoomingList() {
           >
             <ArrowLeft className="w-4 h-4" />
           </Button>
-          <h1 className="font-serif font-bold text-xl">Rooming List</h1>
+          <div>
+            <h1 className="font-serif font-bold text-xl">Rooming List</h1>
+            <p className="text-xs text-primary-foreground/80 mt-0.5 truncate max-w-[220px]">
+              {event?.name ?? "Current Event"}
+              {event?.eventCode ? ` · ${event.eventCode}` : ""}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
-            onClick={handleDashboardClick}
-          >
-            <LayoutDashboard className="w-4 h-4 mr-1" /> Dashboard
-          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -91,6 +102,14 @@ export default function RoomingList() {
             onClick={() => window.print()}
           >
             <Printer className="w-4 h-4 mr-1" /> Print
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+            onClick={handleDashboardClick}
+          >
+            <LayoutDashboard className="w-4 h-4 mr-1" /> Dashboard
           </Button>
           <Button
             variant="ghost"
@@ -118,7 +137,7 @@ export default function RoomingList() {
 
         {!isLoading && confirmed.length === 0 && (
           <div className="text-center py-8 text-muted-foreground text-sm">
-            No confirmed guests yet.
+            No confirmed guests yet. Check the live Check-in page for walk-ins, or wait for RSVP confirmations.
           </div>
         )}
 

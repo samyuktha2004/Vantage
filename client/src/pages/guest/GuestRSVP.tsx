@@ -26,6 +26,42 @@ interface FamilyMember {
   age?: number;
 }
 
+function formatEventDateRange(startValue: unknown, endValue?: unknown, locale: string = "en-US"): string {
+  const startDate = startValue instanceof Date
+    ? startValue
+    : typeof startValue === "string" && startValue
+      ? new Date(startValue)
+      : null;
+  const endDate = endValue instanceof Date
+    ? endValue
+    : typeof endValue === "string" && endValue
+      ? new Date(endValue)
+      : null;
+
+  if (!startDate || Number.isNaN(startDate.getTime())) return "TBD";
+
+  const long = (d: Date) => d.toLocaleDateString(locale, {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  const short = (d: Date) => d.toLocaleDateString(locale, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  if (!endDate || Number.isNaN(endDate.getTime())) return long(startDate);
+
+  const sameDay =
+    startDate.getFullYear() === endDate.getFullYear() &&
+    startDate.getMonth() === endDate.getMonth() &&
+    startDate.getDate() === endDate.getDate();
+
+  return sameDay ? long(startDate) : `${short(startDate)} → ${short(endDate)}`;
+}
+
 export default function GuestRSVP({ token }: { token: string }) {
   const { data: guestData, isLoading } = useGuestPortal(token);
   const updateRSVP = useUpdateRSVP(token);
@@ -146,7 +182,7 @@ export default function GuestRSVP({ token }: { token: string }) {
               <div className="flex items-center justify-between border-b pb-3">
                 <span className="text-sm text-muted-foreground">Date</span>
                 <span className="font-semibold">
-                  {new Date(guestData.event.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  {formatEventDateRange(guestData.event.date, (guestData.event as any).endDate, 'en-US')}
                 </span>
               </div>
               {guestData.event.location && (
@@ -190,12 +226,7 @@ export default function GuestRSVP({ token }: { token: string }) {
           <h1 className="text-4xl font-serif text-primary mb-3">You're Invited — Join Us</h1>
           <p className="text-xl text-muted-foreground">{guestData.event.name}</p>
           <p className="text-sm text-muted-foreground mt-2">
-            {new Date(guestData.event.date).toLocaleDateString('en-US', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric'
-            })}
+            {formatEventDateRange(guestData.event.date, (guestData.event as any).endDate, 'en-US')}
           </p>
         </div>
 
@@ -206,7 +237,7 @@ export default function GuestRSVP({ token }: { token: string }) {
               <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <span><strong className="text-foreground">{guestData.event.location}</strong></span>
                 {guestData.event.date && (
-                  <span>{new Date(guestData.event.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  <span>{formatEventDateRange(guestData.event.date, (guestData.event as any).endDate, 'en-IN')}</span>
                 )}
               </div>
             </CardContent>

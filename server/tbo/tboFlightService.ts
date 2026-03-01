@@ -112,7 +112,6 @@ function getEndUserIp(): string {
 async function tboAirFetch<T>(path: string, body: object, _retried = false): Promise<T> {
   const tokenId = await getFlightToken();
   const url = `${getBaseUrl()}${path}`;
-  console.log("[TBO Air] Calling URL:", url);
 
   const res = await fetch(url, {
     method: "POST",

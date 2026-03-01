@@ -222,12 +222,70 @@ Edit label budgets → Toggle perk coverage → View pending requests
 
 ## Tech Stack
 
-| Layer | Tech |
-|-------|------|
-| Frontend | React 18, TypeScript, Vite, Wouter, TanStack Query v5 |
-| UI | shadcn/ui, Tailwind CSS, Framer Motion |
-| Backend | Express 5, TypeScript, tsx (dev) |
-| Database | PostgreSQL via Supabase, Drizzle ORM |
-| Auth | bcryptjs + express-session (agents/clients); token URL (guests) |
-| APIs | TBO Hotel B2B, TBO Air (TekTravels) |
-| Utilities | XLSX (Excel import/export), Papaparse (CSV), html5-qrcode |
+### Full Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Frontend** | React 18 + TypeScript | UI and state management |
+| **Build tool** | Vite 5 | Fast HMR dev server, optimised production bundles |
+| **Routing** | Wouter | Lightweight client-side router (no Next.js — pure SPA) |
+| **Server state** | TanStack Query v5 | Async data fetching, caching, background refetch |
+| **UI components** | shadcn/ui (Radix UI) | Accessible, unstyled primitives |
+| **Styling** | Tailwind CSS v3 | Utility-first, mobile-first responsive design |
+| **Animation** | Framer Motion | Page transitions, waitlist promotion banner |
+| **Backend** | Express 5 + TypeScript | REST API server |
+| **Runtime** | Node.js 18+ (tsx for dev) | Single process: serves API + static SPA |
+| **Database** | PostgreSQL via Supabase | Managed Postgres, no self-hosting needed |
+| **ORM** | Drizzle ORM | Type-safe SQL, schema-first, no migration files in dev |
+| **Auth** | bcryptjs + express-session | Cookie sessions for agents/clients; signed token URLs for guests |
+| **APIs** | TBO Hotel B2B API, TBO Air (TekTravels UAT) | Live hotel and flight search with mock fallback |
+| **Excel** | XLSX (SheetJS) | Guest list import (CSV/XLSX) + rooming-list export |
+| **CSV** | Papaparse | Fast CSV parsing in browser |
+| **QR** | html5-qrcode + qrcode | Ground team scan + per-guest QR generation |
+| **PDF/Print** | Browser `window.print()` | Manifest export (no external lib needed) |
+
+### Key Architecture Decisions
+
+| Decision | Why |
+|----------|-----|
+| **No Next.js** | The app uses Express sessions (stateful) + a persistent server. Next.js serverless functions don't support this without a major rewrite. |
+| **No separate client/server ports** | Vite proxies `/api/*` to Express in dev; production serves the Vite bundle from the same Express process. One port, zero CORS issues. |
+| **No real-time WebSocket** | Ground team dashboard polls every 30 s — sufficient for check-in latency without the overhead of WebSocket infra. |
+| **Token URLs for guests** | Guests need zero login friction. A signed random UUID in the URL gives per-guest isolation without credentials. |
+| **Drizzle `db:push` in dev** | Schema changes apply directly to Supabase without migration files. Fast for hackathon iteration. |
+| **TBO mock fallback** | When TBO API credentials are unavailable (local dev, demo), the server returns realistic mock data so all guest flows work end-to-end. |
+
+### Scalability
+
+The same architecture runs a 50-guest boutique wedding or a 5,000-delegate convention:
+
+- **Database**: Supabase PostgreSQL scales vertically (connection pooler available for high concurrency)
+- **API**: Express stateless per-request — horizontal scaling behind a load balancer needs only session persistence (swap `MemoryStore` for `connect-pg-simple`)
+- **Frontend**: Vite code-splits by route; TanStack Query aggressive caching means minimal server round-trips for repeat views
+- **Ground team polling**: 30-second interval — fine for check-in volume of any event size
+
+### Mobile-First Design
+
+Every page is built mobile-first (Tailwind `sm:` / `md:` breakpoints):
+- Guest portal: full flow works on a phone browser — no app download
+- Ground team dashboard: tablet-optimised for scan + check-in at the door
+- Agent dashboard: desktop-primary with responsive fallbacks
+
+---
+
+## USPs at a Glance
+
+| USP | Where it works |
+|-----|---------------|
+| **Socially-Intelligent Waitlist** | Guest declines → server auto-promotes highest-priority waitlisted guest. Priority = label tier (VIP=1, Family=2, General=3). |
+| **Budget-Cap Auto-Pilot** | `addOnBudget` per label. Server auto-approves requests within budget (no agent/client call). Client UI toggle shows "Auto-Pilot: ON". |
+| **Smart Check gate** | Guest sees their name + event details before RSVP form — prevents wrong-link confusion. |
+| **Conflict-Aware Itinerary** | Server rejects itinerary registration if two events overlap in time. Guest sees a clear conflict toast. |
+| **Split Billing** | Each perk: `expenseHandledByClient` flag. "Included" = client pays. "₹X" = self-pay. Visible in guest add-ons. |
+| **Bleisure Upsell** | Guest can extend hotel stay pre/post event. Extra nights cost calculated at negotiated group rate. |
+| **EWS (Early Warning System)** | Inventory tab shows red "⚠" at ≥90% utilisation. Auto Top-Up toggle (UI) for future TBO retail block pull. |
+| **Multi-Hotel Selection** | Agent sets up multiple hotel options per event. Guest picks preferred hotel in travel prefs step. |
+| **One-Shot Excel Import** | Drag-and-drop CSV/XLSX. Preview dialog shows first 5 rows before confirming. Auto-matches Category → Label. |
+| **QR Check-In** | Each guest has a unique QR. Ground team scans with phone camera → instant arrival mark. |
+| **Walk-in Registration** | Ground team adds on-spot guests at the door. Generates booking ref + QR instantly. |
+| **WhatsApp Share** | Agent copies guest link → shares via WhatsApp `wa.me/?text=...` pre-filled with invite + booking ref. |

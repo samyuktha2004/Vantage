@@ -1,9 +1,9 @@
 Name,Email,Phone,Category,Dietary Restrictions,Special Requests
-Ramesh Sharma,ramesh.sharma@gmail.com,+919810001001,VIP,Vegetarian,Suite preference
-Sunita Sharma,sunita.sharma@gmail.com,+919810001002,VIP,Vegetarian,
-Vikram Sharma,vikram.sharma@gmail.com,+919810001003,VIP,Jain,Early check-in requested
-Meena Sharma,meena.sharma@gmail.com,+919810001004,VIP,Vegetarian,
-Arjun Sharma,arjun.sharma@gmail.com,+919810001005,VIP,,
+Ramesh Verma,ramesh.Verma@gmail.com,+919810001001,VIP,Vegetarian,Suite preference
+Sunita Verma,sunita.Verma@gmail.com,+919810001002,VIP,Vegetarian,
+Vikram Verma,vikram.Verma@gmail.com,+919810001003,VIP,Jain,Early check-in requested
+Meena Verma,meena.Verma@gmail.com,+919810001004,VIP,Vegetarian,
+Arjun Verma,arjun.Verma@gmail.com,+919810001005,VIP,,
 Priya Mehta,priya.mehta@gmail.com,+919810001006,Family,Vegetarian,Wheelchair access
 Rohit Mehta,rohit.mehta@gmail.com,+919810001007,Family,,
 Kavita Mehta,kavita.mehta@gmail.com,+919810001008,Family,Gluten free,
@@ -38,7 +38,7 @@ Nikhil Agarwal,nikhil.agarwal@gmail.com,+919810001036,Friends,,
 Shreya Agarwal,shreya.agarwal@gmail.com,+919810001037,Friends,Vegetarian,
 Parth Shah,parth.shah@gmail.com,+919810001038,Friends,,
 Kriti Shah,kriti.shah@gmail.com,+919810001039,Friends,,
-Aarav Sharma,aarav.sharma@gmail.com,+919810001040,Friends,,
+Aarav Verma,aarav.Verma@gmail.com,+919810001040,Friends,,
 Sana Khan,sana.khan@gmail.com,+919810001041,Friends,Halal,
 Aryan Khan,aryan.khan@gmail.com,+919810001042,Friends,Halal,
 Pooja Nair,pooja.nair@gmail.com,+919810001043,Friends,Vegetarian,
@@ -46,6 +46,6 @@ Aditya Nair,aditya.nair@gmail.com,+919810001044,Friends,,
 Simran Kaur,simran.kaur@gmail.com,+919810001045,Friends,Vegetarian,
 Gurpreet Singh,gurpreet.singh@gmail.com,+919810001046,Friends,,
 Harpreet Kaur,harpreet.kaur@gmail.com,+919810001047,Friends,Vegetarian,
-Dev Sharma,dev.sharma@gmail.com,+919810001048,Friends,,
+Dev Verma,dev.Verma@gmail.com,+919810001048,Friends,,
 Ankita Rao,ankita.rao@gmail.com,+919810001049,Friends,Vegetarian,
 Vivek Rao,vivek.rao@gmail.com,+919810001050,Friends,,

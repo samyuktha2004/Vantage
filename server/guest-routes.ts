@@ -7,7 +7,7 @@
 
 import { Router } from 'express';
 import { db } from './db';
-import { guests, guestFamily, itineraryEvents, guestItinerary, events, labels, labelPerks, perks, guestRequests, groupInventory } from '@shared/schema';
+import { guests, guestFamily, itineraryEvents, guestItinerary, events, labels, labelPerks, perks, guestRequests, groupInventory, hotelBookings } from '@shared/schema';
 import { eq, and, lt, sql, sum, asc } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
@@ -109,7 +109,7 @@ guestRoutes.get('/api/guest/portal/:token', async (req, res) => {
       hasConflict: false, // TODO: Implement conflict detection
     }));
     
-    // Fetch bleisure rate from group inventory (hotel type)
+    // Fetch bleisure rate and occupancy from group inventory (hotel type)
     const hotelInventory = await db
       .select()
       .from(groupInventory)
@@ -118,6 +118,36 @@ guestRoutes.get('/api/guest/portal/:token', async (req, res) => {
     const bleisureRatePerNight = hotelInventory[0]?.negotiatedRate
       ? Number(hotelInventory[0].negotiatedRate)
       : 250;
+    const hotelRoomsBlocked = Number(hotelInventory[0]?.roomsBlocked ?? 0);
+    const hotelRoomsConfirmed = Number(hotelInventory[0]?.roomsConfirmed ?? 0);
+    // Hotel is full when all blocked rooms are confirmed and at least one room was blocked
+    const isHotelFull = hotelRoomsBlocked > 0 && hotelRoomsConfirmed >= hotelRoomsBlocked;
+
+    // Fetch all hotel options for this event (agent may set up multiple hotels)
+    const allHotelBookings = await db
+      .select()
+      .from(hotelBookings)
+      .where(eq(hotelBookings.eventId, guest.eventId));
+    const hotelOptions = allHotelBookings.map(h => ({
+      id: h.id,
+      name: h.hotelName,
+      checkIn: h.checkInDate,
+      checkOut: h.checkOutDate,
+      numberOfRooms: h.numberOfRooms,
+    }));
+    // Primary hotel = guest's selected one, or first available
+    const selectedHotelBooking = allHotelBookings.find(h => h.id === guest.selectedHotelBookingId)
+      ?? allHotelBookings[0]
+      ?? null;
+    const primaryHotel = selectedHotelBooking
+      ? {
+          id: selectedHotelBooking.id,
+          name: selectedHotelBooking.hotelName,
+          checkIn: selectedHotelBooking.checkInDate,
+          checkOut: selectedHotelBooking.checkOutDate,
+          numberOfRooms: selectedHotelBooking.numberOfRooms,
+        }
+      : null;
 
     // Calculate usedBudget: sum of budgetConsumed for approved requests
     const usedBudgetResult = await db
@@ -153,6 +183,9 @@ guestRoutes.get('/api/guest/portal/:token', async (req, res) => {
       itinerary,
       bleisureRatePerNight,
       usedBudget,
+      isHotelFull,
+      primaryHotel,
+      hotelOptions,
     });
     
   } catch (error) {
@@ -185,7 +218,7 @@ guestRoutes.put('/api/guest/:token/rsvp', async (req, res) => {
       if (nextOnWaitlist) {
         await db
           .update(guests)
-          .set({ isOnWaitlist: false })
+          .set({ isOnWaitlist: false, status: 'confirmed', confirmedSeats: nextOnWaitlist.allocatedSeats ?? 1 })
           .where(eq(guests.id, nextOnWaitlist.id));
         console.log(`[waitlist] Promoted guest #${nextOnWaitlist.id} (${nextOnWaitlist.name}) from waitlist`);
       }
@@ -204,22 +237,72 @@ guestRoutes.put('/api/guest/:token/rsvp', async (req, res) => {
       });
     }
     
-    // Validate seat allocation for confirmed guests
-    if (confirmedSeats > guest.allocatedSeats) {
-      return res.status(400).json({ 
-        message: `Cannot confirm ${confirmedSeats} seats. Only ${guest.allocatedSeats} allocated.` 
-      });
+    // Handle confirmation flow with capacity enforcement
+    if (status === 'confirmed') {
+      if (confirmedSeats > guest.allocatedSeats) {
+        return res.status(400).json({ 
+          message: `Cannot confirm ${confirmedSeats} seats. Only ${guest.allocatedSeats} allocated.` 
+        });
+      }
+
+      // Check event capacity
+      const [eventRow] = await db.select().from(events).where(eq(events.id, guest.eventId)).limit(1);
+      const capacity = eventRow?.capacity ?? null;
+
+      if (capacity && capacity > 0) {
+        const confirmedSumRes = await db.select({ total: sql<number>`coalesce(sum(${guests.confirmedSeats}),0)` })
+          .from(guests)
+          .where(and(eq(guests.eventId, guest.eventId), eq(guests.isOnWaitlist, false), eq(guests.status, 'confirmed')));
+        const currentConfirmed = Number(confirmedSumRes[0]?.total ?? 0);
+        const seatsRequested = Number(confirmedSeats ?? 1);
+
+        if (currentConfirmed + seatsRequested > capacity) {
+          // place on waitlist
+          let priority = 3;
+          if (guest.labelId) {
+            const [label] = await db.select().from(labels).where(eq(labels.id, guest.labelId)).limit(1);
+            if (label?.name.toLowerCase().includes('vip')) priority = 1;
+            else if (label?.name.toLowerCase().includes('family')) priority = 2;
+          }
+
+          const [updatedGuest] = await db
+            .update(guests)
+            .set({ isOnWaitlist: true, waitlistPriority: priority })
+            .where(eq(guests.id, guest.id))
+            .returning();
+
+          const higherPriorityCount = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(guests)
+            .where(and(eq(guests.eventId, guest.eventId), eq(guests.isOnWaitlist, true), lt(guests.waitlistPriority, priority)));
+          const samePriorityCount = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(guests)
+            .where(and(eq(guests.eventId, guest.eventId), eq(guests.isOnWaitlist, true), eq(guests.waitlistPriority, priority), lt(guests.id, guest.id)));
+
+          const position = (higherPriorityCount[0]?.count || 0) + (samePriorityCount[0]?.count || 0) + 1;
+
+          return res.json({ success: true, message: 'Venue full — added to waitlist', position, guest: updatedGuest });
+        }
+      }
+
+      // Enough capacity — confirm the guest
+      const [updatedGuest] = await db
+        .update(guests)
+        .set({ status: 'confirmed', confirmedSeats: confirmedSeats ?? 1, isOnWaitlist: false })
+        .where(eq(guests.id, guest.id))
+        .returning();
+
+      // attach updatedGuest to local variable for family handling below
+      Object.assign(guest, updatedGuest);
+    } else {
+      const [updatedGuest] = await db
+        .update(guests)
+        .set({ status, confirmedSeats: 0 })
+        .where(eq(guests.id, guest.id))
+        .returning();
+      Object.assign(guest, updatedGuest);
     }
-    
-    // Update guest status
-    const [updatedGuest] = await db
-      .update(guests)
-      .set({
-        status,
-        confirmedSeats: status === 'confirmed' ? confirmedSeats : 0,
-      })
-      .where(eq(guests.id, guest.id))
-      .returning();
     
     // Handle family members if confirming
     if (status === 'confirmed' && familyMembers?.length) {
@@ -248,8 +331,44 @@ guestRoutes.put('/api/guest/:token/rsvp', async (req, res) => {
 });
 
 /**
+ * PUT /api/guest/:token/hotel-selection
+ *
+ * Guest selects their preferred hotel from the available options for this event.
+ */
+guestRoutes.put('/api/guest/:token/hotel-selection', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { hotelBookingId } = req.body;
+
+    const guest = await getGuestByToken(token);
+
+    // Validate the hotel booking belongs to this event
+    if (hotelBookingId !== null && hotelBookingId !== undefined) {
+      const [booking] = await db
+        .select()
+        .from(hotelBookings)
+        .where(and(eq(hotelBookings.id, hotelBookingId), eq(hotelBookings.eventId, guest.eventId)))
+        .limit(1);
+      if (!booking) {
+        return res.status(400).json({ message: 'Invalid hotel selection' });
+      }
+    }
+
+    await db
+      .update(guests)
+      .set({ selectedHotelBookingId: hotelBookingId ?? null })
+      .where(eq(guests.id, guest.id));
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Hotel selection error:', error);
+    res.status(400).json({ message: 'Failed to update hotel selection' });
+  }
+});
+
+/**
  * PUT /api/guest/:token/bleisure
- * 
+ *
  * Update bleisure date extensions
  */
 guestRoutes.put('/api/guest/:token/bleisure', async (req, res) => {
@@ -813,36 +932,85 @@ guestRoutes.post('/api/events/:eventId/on-spot-register', async (req: any, res) 
     const accessToken = randomUUID();
     const bookingRef = `WALK-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    const [guest] = await db
-      .insert(guests)
-      .values({
-        eventId,
-        name,
-        email: email || `walkin-${bookingRef.toLowerCase()}@noemail.local`,
-        phone: phone || null,
-        bookingRef,
-        accessToken,
-        labelId: labelId ?? null,
-        status: 'confirmed',
-        allocatedSeats: 1,
-        confirmedSeats: 1,
-        mealPreference: mealPreference ?? 'standard',
-        registrationSource: 'on_spot',
-      })
-      .returning();
+    // Check event capacity and current confirmed seats
+    const [eventRow] = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
+    const capacity = eventRow?.capacity ?? null;
 
-    const guestLink = `${process.env.APP_URL || 'http://localhost:5000'}/guest/${accessToken}`;
+    const confirmedSumRes = await db.select({ total: sql<number>`coalesce(sum(${guests.confirmedSeats}),0)` })
+      .from(guests)
+      .where(and(eq(guests.eventId, eventId), eq(guests.isOnWaitlist, false), eq(guests.status, 'confirmed')));
+    const currentConfirmed = Number(confirmedSumRes[0]?.total ?? 0);
 
-    res.json({
-      success: true,
-      guest: {
-        id: guest.id,
-        name: guest.name,
-        bookingRef: guest.bookingRef,
-        accessToken: guest.accessToken,
-      },
-      guestLink,
-    });
+    let insertedGuest: any;
+    if (capacity && capacity > 0 && currentConfirmed >= capacity) {
+      // Venue full — add walk-in to waitlist instead of confirming
+      const [guestWL] = await db
+        .insert(guests)
+        .values({
+          eventId,
+          name,
+          email: email || `walkin-${bookingRef.toLowerCase()}@noemail.local`,
+          phone: phone || null,
+          bookingRef,
+          accessToken,
+          labelId: labelId ?? null,
+          status: 'pending',
+          allocatedSeats: 1,
+          confirmedSeats: 0,
+          isOnWaitlist: true,
+          waitlistPriority: 3,
+          mealPreference: mealPreference ?? 'standard',
+          registrationSource: 'on_spot',
+        })
+        .returning();
+
+      // Calculate position
+      const higherPriorityCount = await db.select({ count: sql<number>`count(*)` })
+        .from(guests)
+        .where(and(eq(guests.eventId, eventId), eq(guests.isOnWaitlist, true), lt(guests.waitlistPriority, 3)));
+      const samePriorityCount = await db.select({ count: sql<number>`count(*)` })
+        .from(guests)
+        .where(and(eq(guests.eventId, eventId), eq(guests.isOnWaitlist, true), eq(guests.waitlistPriority, 3), lt(guests.id, guestWL.id)));
+      const position = (higherPriorityCount[0]?.count || 0) + (samePriorityCount[0]?.count || 0) + 1;
+
+      insertedGuest = guestWL;
+
+      const guestLink = `${process.env.APP_URL || 'http://localhost:5000'}/guest/${accessToken}`;
+      return res.json({ success: true, message: 'Venue full — added to waitlist', position, guest: { id: guestWL.id, name: guestWL.name, bookingRef: guestWL.bookingRef, accessToken: guestWL.accessToken }, guestLink });
+    } else {
+      const [guest] = await db
+        .insert(guests)
+        .values({
+          eventId,
+          name,
+          email: email || `walkin-${bookingRef.toLowerCase()}@noemail.local`,
+          phone: phone || null,
+          bookingRef,
+          accessToken,
+          labelId: labelId ?? null,
+          status: 'confirmed',
+          allocatedSeats: 1,
+          confirmedSeats: 1,
+          mealPreference: mealPreference ?? 'standard',
+          registrationSource: 'on_spot',
+        })
+        .returning();
+
+      insertedGuest = guest;
+
+      const guestLink = `${process.env.APP_URL || 'http://localhost:5000'}/guest/${accessToken}`;
+
+      res.json({
+        success: true,
+        guest: {
+          id: guest.id,
+          name: guest.name,
+          bookingRef: guest.bookingRef,
+          accessToken: guest.accessToken,
+        },
+        guestLink,
+      });
+    }
   } catch (error: any) {
     console.error('On-spot registration error:', error);
     res.status(400).json({ message: error.message || 'Failed to register walk-in guest' });

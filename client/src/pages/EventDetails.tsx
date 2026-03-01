@@ -27,6 +27,31 @@ import { GuestLinkManager } from "@/components/GuestLinkManager";
 import { CapacityAlert } from "@/components/CapacityAlert";
 import { RsvpBreakdownCard } from "@/components/RsvpBreakdownCard";
 
+function formatEventDateRange(startValue: unknown, endValue?: unknown): string {
+  const startDate = startValue instanceof Date
+    ? startValue
+    : typeof startValue === "string" && startValue
+      ? new Date(startValue)
+      : null;
+  const endDate = endValue instanceof Date
+    ? endValue
+    : typeof endValue === "string" && endValue
+      ? new Date(endValue)
+      : null;
+
+  if (!startDate || Number.isNaN(startDate.getTime())) return "TBD";
+  if (!endDate || Number.isNaN(endDate.getTime())) return format(startDate, "PPP");
+
+  const sameDay =
+    startDate.getFullYear() === endDate.getFullYear() &&
+    startDate.getMonth() === endDate.getMonth() &&
+    startDate.getDate() === endDate.getDate();
+
+  return sameDay
+    ? format(startDate, "PPP")
+    : `${format(startDate, "PPP")} → ${format(endDate, "PPP")}`;
+}
+
 export default function EventDetails() {
   const [match, params] = useRoute("/events/:id");
   const id = Number(params?.id);
@@ -91,6 +116,9 @@ export default function EventDetails() {
   const [uploading, setUploading] = useState(false);
   const [showImportPreview, setShowImportPreview] = useState(false);
   const [importedGuests, setImportedGuests] = useState<any[]>([]);
+  const [guestSearchTerm, setGuestSearchTerm] = useState("");
+  const [guestStatusFilter, setGuestStatusFilter] = useState<"all" | "confirmed" | "declined" | "pending">("all");
+  const [guestCategoryFilter, setGuestCategoryFilter] = useState("all");
   
   // Label management state
   const [newLabelName, setNewLabelName] = useState("");
@@ -112,6 +140,7 @@ export default function EventDetails() {
   });
   const [isAddingPerk, setIsAddingPerk] = useState(false);
   const [showPerkDialog, setShowPerkDialog] = useState(false);
+  const [selectedPerkLabelIds, setSelectedPerkLabelIds] = useState<number[]>([]);
   
   // Label-Perk assignment state
   const [selectedLabel, setSelectedLabel] = useState<any>(null);
@@ -198,6 +227,63 @@ export default function EventDetails() {
     themeColor: (event as any)?.themeColor ?? "#1B2D5B",
   });
   const [isSavingMicrosite, setIsSavingMicrosite] = useState(false);
+
+  const normalizeHexColor = (value: string): string => {
+    const trimmed = (value ?? "").trim();
+    if (!trimmed.startsWith("#")) return "#1B2D5B";
+    if (trimmed.length === 4) {
+      return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`;
+    }
+    if (trimmed.length === 7) return trimmed;
+    return "#1B2D5B";
+  };
+
+  const hexToRgb = (hex: string) => {
+    const safeHex = normalizeHexColor(hex);
+    return {
+      r: Number.parseInt(safeHex.slice(1, 3), 16),
+      g: Number.parseInt(safeHex.slice(3, 5), 16),
+      b: Number.parseInt(safeHex.slice(5, 7), 16),
+    };
+  };
+
+  const channelToLinear = (channel: number) => {
+    const c = channel / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+
+  const luminance = (hex: string) => {
+    const { r, g, b } = hexToRgb(hex);
+    return 0.2126 * channelToLinear(r) + 0.7152 * channelToLinear(g) + 0.0722 * channelToLinear(b);
+  };
+
+  const contrastRatio = (hexA: string, hexB: string) => {
+    const l1 = luminance(hexA);
+    const l2 = luminance(hexB);
+    const lighter = Math.max(l1, l2);
+    const darker = Math.min(l1, l2);
+    return (lighter + 0.05) / (darker + 0.05);
+  };
+
+  const activeThemeColor = micrositeData.themePreset === "custom"
+    ? normalizeHexColor(micrositeData.themeColor)
+    : (THEME_PRESETS.find((preset) => preset.value === micrositeData.themePreset)?.color || "#1B2D5B");
+  const whiteContrast = contrastRatio(activeThemeColor, "#FFFFFF");
+  const blackContrast = contrastRatio(activeThemeColor, "#111827");
+  const previewTextColor = whiteContrast >= blackContrast ? "#FFFFFF" : "#111827";
+  const maxContrast = Math.max(whiteContrast, blackContrast);
+  const showCustomContrastWarning = micrositeData.themePreset === "custom" && maxContrast < 5;
+
+  useEffect(() => {
+    if (!event) return;
+    setMicrositeData({
+      coverMediaUrl: (event as any)?.coverMediaUrl ?? "",
+      coverMediaType: (event as any)?.coverMediaType ?? "image",
+      themePreset: (event as any)?.themePreset ?? "navy",
+      themeColor: (event as any)?.themeColor ?? "#1B2D5B",
+    });
+  }, [event]);
+
   const handleSaveMicrositeSettings = async () => {
     setIsSavingMicrosite(true);
     try {
@@ -370,6 +456,24 @@ export default function EventDetails() {
       });
 
       if (!response.ok) throw new Error('Failed to create perk');
+
+      const createdPerk = await response.json();
+
+      if (selectedPerkLabelIds.length > 0) {
+        await Promise.all(
+          selectedPerkLabelIds.map(async (labelId) => {
+            const assignResponse = await fetch(`/api/labels/${labelId}/perks/${createdPerk.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ isEnabled: true, expenseHandledByClient: false }),
+            });
+            if (!assignResponse.ok) {
+              throw new Error('Perk created but failed to assign one or more labels');
+            }
+          }),
+        );
+      }
       
       toast({ title: "Perk created", description: `${newPerkData.name} has been added` });
       setNewPerkData({
@@ -383,6 +487,7 @@ export default function EventDetails() {
         clientFacingRate: 0,
         pricingType: "requestable"
       });
+      setSelectedPerkLabelIds([]);
       setShowPerkDialog(false);
       window.location.reload(); // Refresh to show new perk
     } catch (error: any) {
@@ -642,6 +747,44 @@ export default function EventDetails() {
     }
   };
 
+  const allGuests = (guests ?? []) as any[];
+  const pendingRequestsCount = (requests ?? []).filter((r: any) => r.status === 'pending').length;
+
+  const guestCategories = useMemo(() => {
+    return Array.from(
+      new Set(
+        allGuests
+          .map((guest: any) => guest.category?.trim())
+          .filter((category: string | undefined): category is string => !!category),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+  }, [allGuests]);
+
+  const filteredGuests = useMemo(() => {
+    const query = guestSearchTerm.trim().toLowerCase();
+    return allGuests.filter((guest: any) => {
+      const normalizedStatus =
+        guest.status === "arrived"
+          ? "confirmed"
+          : guest.status === "no_show"
+            ? "declined"
+            : (guest.status ?? "pending");
+
+      const statusMatch = guestStatusFilter === "all" || normalizedStatus === guestStatusFilter;
+      const categoryMatch = guestCategoryFilter === "all" || (guest.category?.trim() ?? "") === guestCategoryFilter;
+      const searchMatch =
+        query.length === 0 ||
+        guest.name?.toLowerCase().includes(query) ||
+        guest.email?.toLowerCase().includes(query) ||
+        String(guest.phone ?? "").toLowerCase().includes(query);
+
+      return statusMatch && categoryMatch && searchMatch;
+    });
+  }, [allGuests, guestCategoryFilter, guestSearchTerm, guestStatusFilter]);
+
+  const hasGuestFilters =
+    guestSearchTerm.trim().length > 0 || guestStatusFilter !== "all" || guestCategoryFilter !== "all";
+
   if (isEventLoading || !event) {
     return (
       <DashboardLayout>
@@ -651,9 +794,6 @@ export default function EventDetails() {
       </DashboardLayout>
     );
   }
-
-  const allGuests = (guests ?? []) as any[];
-  const pendingRequestsCount = (requests ?? []).filter((r: any) => r.status === 'pending').length;
 
   return (
     <DashboardLayout>
@@ -665,7 +805,7 @@ export default function EventDetails() {
               <div className="text-sm text-accent-foreground/80 font-medium mb-1 uppercase tracking-wider">Event Dashboard</div>
               <h1 className="text-4xl font-serif text-primary mb-2">{event.name}</h1>
               <div className="flex gap-4 text-sm text-muted-foreground">
-                <span>{format(new Date(event.date), "PPP p")}</span>
+                <span>{formatEventDateRange(event.date, (event as any).endDate)}</span>
                 <span>•</span>
                 <span>{event.location}</span>
               </div>
@@ -1051,15 +1191,71 @@ export default function EventDetails() {
           )}
           
           <div className="bg-white rounded-2xl border border-border/50 overflow-hidden shadow-sm">
-            <div className="p-4 border-b border-border/50 bg-muted/20 flex justify-between items-center">
-              <h3 className="font-medium">Guest List ({guests?.length || 0})</h3>
-              <Button size="sm" onClick={() => setShowAddGuestDialog(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Guest
-              </Button>
+            <div className="p-4 border-b border-border/50 bg-muted/20 space-y-3">
+              <div className="flex justify-between items-center gap-3">
+                <h3 className="font-medium">Guest List ({filteredGuests.length}{hasGuestFilters ? ` / ${allGuests.length}` : ""})</h3>
+                <Button size="sm" onClick={() => setShowAddGuestDialog(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Guest
+                </Button>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-2">
+                <Input
+                  placeholder="Search by name, email, or phone"
+                  value={guestSearchTerm}
+                  onChange={(e) => setGuestSearchTerm(e.target.value)}
+                />
+                <div className="flex items-center gap-2 flex-wrap md:justify-end">
+                  {(["all", "confirmed", "declined", "pending"] as const).map((status) => (
+                    <Button
+                      key={status}
+                      size="sm"
+                      variant={guestStatusFilter === status ? "default" : "outline"}
+                      onClick={() => setGuestStatusFilter(status)}
+                      className="capitalize"
+                    >
+                      {status}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  variant={guestCategoryFilter === "all" ? "default" : "outline"}
+                  onClick={() => setGuestCategoryFilter("all")}
+                >
+                  All categories
+                </Button>
+                {guestCategories.map((category) => (
+                  <Button
+                    key={category}
+                    size="sm"
+                    variant={guestCategoryFilter === category ? "default" : "outline"}
+                    onClick={() => setGuestCategoryFilter(category)}
+                  >
+                    {category}
+                  </Button>
+                ))}
+                {hasGuestFilters && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setGuestSearchTerm("");
+                      setGuestStatusFilter("all");
+                      setGuestCategoryFilter("all");
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="divide-y divide-border/50">
-              {guests?.map(guest => (
+              {filteredGuests.map(guest => (
                 <div key={guest.id} className="p-4 flex items-center justify-between hover:bg-muted/10 transition-colors">
                   <div className="flex-1">
                     <div className="font-medium text-primary">{guest.name}</div>
@@ -1094,10 +1290,10 @@ export default function EventDetails() {
                   </div>
                 </div>
               ))}
-              {guests?.length === 0 && (
+              {filteredGuests.length === 0 && (
                 <div className="p-8 text-center text-muted-foreground">
                   <Users className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                  <p>No guests yet. Upload an Excel file to import.</p>
+                  <p>{allGuests.length === 0 ? "No guests yet. Upload an Excel file to import." : "No guests match current filters."}</p>
                 </div>
               )}
             </div>
@@ -1448,6 +1644,33 @@ export default function EventDetails() {
                       <option value="self_pay">Self-pay — guest pays directly</option>
                     </select>
                   </div>
+
+                  <div>
+                    <Label>Enable for Labels</Label>
+                    <div className="mt-2 space-y-2 max-h-40 overflow-y-auto border rounded-md p-3">
+                      {labels && labels.length > 0 ? labels.map((label: any) => {
+                        const checked = selectedPerkLabelIds.includes(label.id);
+                        return (
+                          <label key={label.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(value) => {
+                                const isChecked = !!value;
+                                setSelectedPerkLabelIds((prev) =>
+                                  isChecked
+                                    ? Array.from(new Set([...prev, label.id]))
+                                    : prev.filter((id) => id !== label.id),
+                                );
+                              }}
+                            />
+                            <span>{label.name}</span>
+                          </label>
+                        );
+                      }) : (
+                        <p className="text-xs text-muted-foreground">No labels yet. Create labels first, or assign this perk later.</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setShowPerkDialog(false)}>
@@ -1786,6 +2009,21 @@ export default function EventDetails() {
                   />
                 </div>
               )}
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-muted-foreground">Live preview</span>
+                <span
+                  className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium"
+                  style={{ backgroundColor: activeThemeColor, color: previewTextColor, borderColor: activeThemeColor }}
+                >
+                  Invite Button
+                </span>
+                {showCustomContrastWarning && (
+                  <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
+                    Close to low contrast
+                  </span>
+                )}
+              </div>
             </CardContent>
           </Card>
 

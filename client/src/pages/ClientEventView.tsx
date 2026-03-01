@@ -26,7 +26,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Loader2, Calendar, MapPin, Users, DollarSign, Tag, Inbox, Clock, Plus, Upload, FileSpreadsheet, CheckCircle, XCircle, Plane, Train, Bus, Car, Ship, Building2, UserCheck, UserX, HelpCircle, Gift } from "lucide-react";
 import { format } from "date-fns";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { parseExcelFile, parseCSVFile } from "@/lib/excelParser";
 import { api } from "@shared/routes";
@@ -34,6 +34,31 @@ import { RsvpBreakdownCard } from "@/components/RsvpBreakdownCard";
 
 interface ClientEventViewProps {
   eventId: number;
+}
+
+function formatEventDateRange(startValue: unknown, endValue?: unknown): string {
+  const startDate = startValue instanceof Date
+    ? startValue
+    : typeof startValue === "string" && startValue
+      ? new Date(startValue)
+      : null;
+  const endDate = endValue instanceof Date
+    ? endValue
+    : typeof endValue === "string" && endValue
+      ? new Date(endValue)
+      : null;
+
+  if (!startDate || Number.isNaN(startDate.getTime())) return "TBD";
+  if (!endDate || Number.isNaN(endDate.getTime())) return format(startDate, "PPP");
+
+  const sameDay =
+    startDate.getFullYear() === endDate.getFullYear() &&
+    startDate.getMonth() === endDate.getMonth() &&
+    startDate.getDate() === endDate.getDate();
+
+  return sameDay
+    ? format(startDate, "PPP")
+    : `${format(startDate, "PPP")} → ${format(endDate, "PPP")}`;
 }
 
 export default function ClientEventView({ eventId }: ClientEventViewProps) {
@@ -103,6 +128,13 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
   const [savingBudget, setSavingBudget] = useState<number | null>(null);
   const [autoPilotEnabled, setAutoPilotEnabled] = useState<Record<number, boolean>>({});
   const labelsQueryKey = [api.labels.list.path, eventId] as const;
+  const inviteMediaInputRef = useRef<HTMLInputElement>(null);
+  const [inviteUrl, setInviteUrl] = useState("");
+  const [inviteMediaType, setInviteMediaType] = useState<"image" | "video">("image");
+  const [inviteMessage, setInviteMessage] = useState("");
+  const [scheduleText, setScheduleText] = useState("");
+  const [contentSaving, setContentSaving] = useState(false);
+  const [contentInitialized, setContentInitialized] = useState(false);
 
   const handleSaveBudget = async (labelId: number) => {
     const budget = budgetEdits[labelId];
@@ -126,6 +158,85 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setSavingBudget(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!event || contentInitialized) return;
+    setInviteUrl((event as any).coverMediaUrl ?? "");
+    setInviteMediaType((event as any).coverMediaType === "video" ? "video" : "image");
+    setInviteMessage((event as any).inviteMessage ?? "");
+    setScheduleText((event as any).scheduleText ?? "");
+    setContentInitialized(true);
+  }, [event, contentInitialized]);
+
+  const handleInviteFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const isImage = file.type.startsWith("image/");
+    const isVideo = file.type.startsWith("video/");
+    if (!isImage && !isVideo) {
+      toast({ title: "Unsupported file", description: "Upload an image or video file.", variant: "destructive" });
+      e.target.value = "";
+      return;
+    }
+
+    const maxSizeBytes = 4 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      toast({ title: "File too large", description: "Please upload a file smaller than 4MB.", variant: "destructive" });
+      e.target.value = "";
+      return;
+    }
+
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Failed to read file"));
+        reader.readAsDataURL(file);
+      });
+
+      if (!dataUrl.startsWith("data:")) throw new Error("Invalid file data");
+
+      setInviteUrl(dataUrl);
+      setInviteMediaType(isVideo ? "video" : "image");
+      toast({ title: "Invite media added" });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message || "Could not process file", variant: "destructive" });
+    } finally {
+      e.target.value = "";
+    }
+  };
+
+  const handleSaveEventContent = async () => {
+    setContentSaving(true);
+    try {
+      const patchPayload = {
+        coverMediaUrl: inviteUrl.trim() || null,
+        coverMediaType: inviteMediaType,
+        scheduleText: scheduleText.trim() || null,
+        inviteMessage: inviteMessage.trim() || null,
+      };
+
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(patchPayload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.message || "Failed to save event content");
+      }
+
+      toast({ title: "Event content updated" });
+      queryClient.invalidateQueries({ queryKey: [api.events.get.path, eventId] });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setContentSaving(false);
     }
   };
 
@@ -212,7 +323,7 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
     }
   };
 
-  // Toggle perk coverage
+  // Toggle perk coverage or assignment (PUT is an upsert — creates if not exists)
   const [togglingPerk, setTogglingPerk] = useState<string | null>(null);
 
   const handleTogglePerkCoverage = async (labelId: number, perkId: number, expenseHandledByClient: boolean) => {
@@ -223,10 +334,31 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ expenseHandledByClient }),
+        body: JSON.stringify({ expenseHandledByClient, isEnabled: true }),
       });
       if (!res.ok) throw new Error("Failed to update perk");
-      toast({ title: expenseHandledByClient ? "Perk marked as client-covered" : "Perk coverage removed" });
+      toast({ title: expenseHandledByClient ? "Marked as client-covered" : "Changed to self-pay" });
+      queryClient.invalidateQueries({ queryKey: ["label-perks-all", eventId] });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setTogglingPerk(null);
+    }
+  };
+
+  // Toggle whether a perk is offered to a label at all (isEnabled on/off)
+  const handleTogglePerkEnabled = async (labelId: number, perkId: number, isEnabled: boolean) => {
+    const key = `${labelId}-${perkId}`;
+    setTogglingPerk(key);
+    try {
+      const res = await fetch(`/api/labels/${labelId}/perks/${perkId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ isEnabled, expenseHandledByClient: isEnabled ? true : false }),
+      });
+      if (!res.ok) throw new Error("Failed to update perk");
+      toast({ title: isEnabled ? "Perk added to this tier" : "Perk removed from this tier" });
       queryClient.invalidateQueries({ queryKey: ["label-perks-all", eventId] });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -267,7 +399,7 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
             <Calendar className="w-5 h-5 text-primary mt-0.5 shrink-0" />
             <div>
               <p className="text-xs text-muted-foreground">Event Date</p>
-              <p className="font-semibold text-sm">{format(new Date(event.date), "PPP")}</p>
+              <p className="font-semibold text-sm">{formatEventDateRange(event.date, (event as any).endDate)}</p>
             </div>
           </CardContent>
         </Card>
@@ -285,13 +417,185 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
             <Users className="w-5 h-5 text-primary mt-0.5 shrink-0" />
             <div>
               <p className="text-xs text-muted-foreground">RSVP Status</p>
-              <p className="font-semibold text-sm">See detailed breakdown below</p>
+              <div className="flex gap-3 mt-1">
+                <div>
+                  <p className="text-sm font-semibold">{(allGuests ?? []).filter(g => g.status === 'confirmed').length}</p>
+                  <p className="text-xs text-muted-foreground">Confirmed</p>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">{(allGuests ?? []).filter(g => g.status === 'pending' || !g.status).length}</p>
+                  <p className="text-xs text-muted-foreground">Pending</p>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">{(allGuests ?? []).filter(g => g.status === 'declined').length}</p>
+                  <p className="text-xs text-muted-foreground">Declined</p>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
       <RsvpBreakdownCard guests={allGuests} title="RSVP Breakdown" />
+
+      {/* Guests grouped by RSVP status */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Users className="w-4 h-4" />
+            Guests by RSVP
+          </CardTitle>
+          <CardDescription>Quick view of attendees by RSVP status with share link</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="divide-y divide-border/50">
+            {['confirmed', 'pending', 'declined'].map((status) => (
+              <div key={status} className="p-4">
+                <p className="text-sm font-medium capitalize mb-2">{status} · {(allGuests ?? []).filter(g => (g.status ?? 'pending') === status).length}</p>
+                <div className="grid gap-2">
+                  {(allGuests ?? []).filter(g => (g.status ?? 'pending') === status).slice(0, 50).map((g: any) => (
+                    <div key={g.id} className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">{g.name}</p>
+                        <p className="text-xs text-muted-foreground">{g.email ?? g.phone ?? g.bookingRef}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="ghost" onClick={() => {
+                          const link = `${process.env.APP_URL || window.location.origin}/guest/${g.accessToken ?? g.bookingRef}`;
+                          navigator.clipboard.writeText(link).then(() => toast({ title: 'Link copied', description: link }));
+                        }}>Copy Link</Button>
+                        <Button size="sm" onClick={() => {
+                          const link = `${process.env.APP_URL || window.location.origin}/guest/${g.accessToken ?? g.bookingRef}`;
+                          const wa = `https://wa.me/?text=${encodeURIComponent((g.name ? `Hi ${g.name}, ` : '') + 'Here is your event link: ' + link)}`;
+                          window.open(wa, '_blank');
+                        }} variant="outline">WhatsApp</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Guests grouped by Label/Category */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Tag className="w-4 h-4" />
+            Guests by Category
+          </CardTitle>
+          <CardDescription>Lists guests grouped by label/category</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="divide-y divide-border/50">
+            {((labels ?? []) as any[]).length > 0 ? (
+              (labels as any[]).map((lbl: any) => (
+                <div key={lbl.id} className="p-4">
+                  <p className="text-sm font-medium">{lbl.name} · {(allGuests ?? []).filter(g => (g.labelId ?? g.category) && (g.labelId === lbl.id || (g.category && g.category.toLowerCase() === String(lbl.name).toLowerCase()))).length}</p>
+                  <div className="grid gap-2 mt-2">
+                    {(allGuests ?? []).filter(g => (g.labelId === lbl.id) || (g.category && g.category.toLowerCase() === String(lbl.name).toLowerCase())).slice(0,50).map((g: any) => (
+                      <div key={g.id} className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">{g.name}</p>
+                          <p className="text-xs text-muted-foreground">{g.email ?? g.phone ?? g.bookingRef}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" variant="ghost" onClick={() => {
+                            const link = `${process.env.APP_URL || window.location.origin}/guest/${g.accessToken ?? g.bookingRef}`;
+                            navigator.clipboard.writeText(link).then(() => toast({ title: 'Link copied', description: link }));
+                          }}>Copy Link</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="p-4">
+                <p className="text-sm text-muted-foreground">No labels available — use the import or labels tab to add categories.</p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Upload className="w-4 h-4" />
+            Event Content
+          </CardTitle>
+          <CardDescription>Add invite media/link, fallback invite text, and schedule shown to guests</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Invite Link</Label>
+            <Input
+              placeholder="https://drive.google.com/... or Canva link"
+              value={inviteUrl}
+              onChange={(e) => setInviteUrl(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Upload Invite Media</Label>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="gap-2"
+                onClick={() => inviteMediaInputRef.current?.click()}
+              >
+                <Upload className="w-4 h-4" />
+                Upload Image/Video
+              </Button>
+              <input
+                ref={inviteMediaInputRef}
+                type="file"
+                accept="image/*,video/*"
+                className="hidden"
+                onChange={handleInviteFileUpload}
+              />
+            </div>
+            {inviteUrl.startsWith("data:image/") && (
+              <img src={inviteUrl} alt="Invite preview" className="w-full max-h-56 rounded-md border object-cover" />
+            )}
+            {inviteUrl.startsWith("data:video/") && (
+              <video src={inviteUrl} controls className="w-full max-h-64 rounded-md border" />
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Fallback Invite Text</Label>
+            <textarea
+              className="flex min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              placeholder={`Dear {name}, you are invited to ${event.name}. We look forward to welcoming you.`}
+              value={inviteMessage}
+              onChange={(e) => setInviteMessage(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Event Schedule</Label>
+            <textarea
+              className="flex min-h-[110px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              placeholder={"Day 1 — Arrival\nDay 2 — Main program\nDay 3 — Departure"}
+              value={scheduleText}
+              onChange={(e) => setScheduleText(e.target.value)}
+            />
+          </div>
+
+          <div className="pt-1">
+            <Button onClick={handleSaveEventContent} disabled={contentSaving}>
+              {contentSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Save Event Content
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Offered by Agent */}
       {(offeredTravelOptions.length > 0 || offeredHotels.length > 0 || offeredAddOns.length > 0) && (
@@ -654,34 +958,57 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
                     )}
                   </div>
                 </CardHeader>
-                {labelPerks.length > 0 && (
+                {offeredAddOns.length > 0 && (
                   <CardContent className="pt-0">
-                    <p className="text-xs text-muted-foreground mb-3">Toggle which perks are covered by you (client-covered = guests see "Included")</p>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Tick to offer a perk to this tier · Toggle right switch to mark it as client-covered (guest sees "Included")
+                    </p>
                     <div className="space-y-2">
-                      {labelPerks.map((lp: any) => {
-                        const key = `${label.id}-${lp.perkId}`;
+                      {offeredAddOns.map((perk: any) => {
+                        const lp = labelPerks.find((x: any) => x.perkId === perk.id);
+                        const isOffered = !!(lp?.isEnabled);
+                        const isCovered = !!(lp?.expenseHandledByClient);
+                        const key = `${label.id}-${perk.id}`;
+                        const busy = togglingPerk === key;
                         return (
-                          <div key={lp.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                            <div>
-                              <p className="text-sm font-medium">{lp.perk?.name ?? `Perk #${lp.perkId}`}</p>
-                              {lp.perk?.description && (
-                                <p className="text-xs text-muted-foreground">{lp.perk.description}</p>
+                          <div key={perk.id} className={`flex items-center gap-3 py-2.5 px-2 rounded-lg border transition-colors ${isOffered ? "border-primary/20 bg-primary/3" : "border-border/40"}`}>
+                            {/* Checkbox — toggles isEnabled */}
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 rounded accent-primary cursor-pointer shrink-0"
+                              checked={isOffered}
+                              disabled={busy}
+                              onChange={(e) => handleTogglePerkEnabled(label.id, perk.id, e.target.checked)}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium">{perk.name}</p>
+                              {perk.description && (
+                                <p className="text-xs text-muted-foreground truncate">{perk.description}</p>
+                              )}
+                              {perk.unitCost > 0 && (
+                                <p className="text-xs text-muted-foreground">₹{perk.unitCost.toLocaleString("en-IN")}</p>
                               )}
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-xs text-muted-foreground">
-                                {lp.expenseHandledByClient ? "Client-covered" : "Not covered"}
-                              </span>
-                              <Switch
-                                checked={!!lp.expenseHandledByClient}
-                                disabled={togglingPerk === key}
-                                onCheckedChange={(checked) => handleTogglePerkCoverage(label.id, lp.perkId, checked)}
-                              />
-                            </div>
+                            {/* Coverage toggle — only visible when offered */}
+                            {isOffered && (
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-xs text-muted-foreground hidden sm:inline">
+                                  {isCovered ? "Covered by you" : "Self-pay"}
+                                </span>
+                                <Switch
+                                  checked={isCovered}
+                                  disabled={busy}
+                                  onCheckedChange={(checked) => handleTogglePerkCoverage(label.id, perk.id, checked)}
+                                />
+                              </div>
+                            )}
                           </div>
                         );
                       })}
                     </div>
+                    {offeredAddOns.length === 0 && (
+                      <p className="text-xs text-center text-muted-foreground py-4">No perks configured for this event yet</p>
+                    )}
                   </CardContent>
                 )}
               </Card>

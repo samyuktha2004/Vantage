@@ -80,10 +80,22 @@ function EWSBadge({ eventId }: { eventId: number }) {
 const createEventFormSchema = insertEventSchema.pick({
   name: true,
   date: true,
+  endDate: true,
   location: true,
   description: true,
 }).extend({
   clientName: z.string().min(1, "Client name is required"),
+}).superRefine((data, ctx) => {
+  if (!data.endDate) return;
+  const start = new Date(data.date as any).getTime();
+  const end = new Date(data.endDate as any).getTime();
+  if (!Number.isNaN(start) && !Number.isNaN(end) && end < start) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["endDate"],
+      message: "End date cannot be earlier than start date",
+    });
+  }
 });
 
 type CreateEventFormValues = z.infer<typeof createEventFormSchema>;
@@ -93,6 +105,46 @@ const eventCodeSchema = z.object({
 });
 
 type EventCodeFormValues = z.infer<typeof eventCodeSchema>;
+
+function toDateInputValue(value: unknown): string {
+  if (typeof value === "string") {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 10);
+    return value;
+  }
+
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) return "";
+
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatEventDateRange(startValue: unknown, endValue?: unknown): string {
+  const startDate = startValue instanceof Date
+    ? startValue
+    : typeof startValue === "string" && startValue
+      ? new Date(startValue)
+      : null;
+  const endDate = endValue instanceof Date
+    ? endValue
+    : typeof endValue === "string" && endValue
+      ? new Date(endValue)
+      : null;
+
+  if (!startDate || Number.isNaN(startDate.getTime())) return "—";
+  if (!endDate || Number.isNaN(endDate.getTime())) return format(startDate, "PPP");
+
+  const sameDay =
+    startDate.getFullYear() === endDate.getFullYear() &&
+    startDate.getMonth() === endDate.getMonth() &&
+    startDate.getDate() === endDate.getDate();
+
+  return sameDay
+    ? format(startDate, "PPP")
+    : `${format(startDate, "PPP")} → ${format(endDate, "PPP")}`;
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -146,6 +198,7 @@ export default function Dashboard() {
       location: "",
       description: "",
       clientName: "",
+      endDate: undefined,
     },
   });
 
@@ -164,7 +217,8 @@ export default function Dashboard() {
       setIsDialogOpen(false);
       form.reset();
       // Navigate to event setup page
-      navigate(`/events/${result.id}/setup`);
+      const clientNameParam = encodeURIComponent((data.clientName || "").trim());
+      navigate(`/events/${result.id}/setup${clientNameParam ? `?clientName=${clientNameParam}` : ""}`);
     } catch (error: any) {
       console.error("Failed to create event", error);
       toast({ title: "Error", description: error.message || "Failed to create event", variant: "destructive" });
@@ -338,23 +392,13 @@ export default function Dashboard() {
                     name="date"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Date</FormLabel>
+                        <FormLabel>Start Date</FormLabel>
                         <FormControl>
                           <Input
-                            type="datetime-local"
-                            value={(() => {
-                              if (field.value instanceof Date && !isNaN(field.value.getTime())) {
-                                return field.value.toISOString().slice(0, 16);
-                              }
-                              if (typeof field.value === "string" && field.value) {
-                                const d = new Date(field.value);
-                                return !isNaN(d.getTime()) ? d.toISOString().slice(0, 16) : "";
-                              }
-                              return "";
-                            })()}
+                            type="date"
+                            value={toDateInputValue(field.value)}
                             onChange={(e) => {
-                              const d = e.target.value ? new Date(e.target.value) : undefined;
-                              field.onChange(d);
+                              field.onChange(e.target.value || undefined);
                             }}
                           />
                         </FormControl>
@@ -362,6 +406,28 @@ export default function Dashboard() {
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={form.control}
+                    name="endDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>End Date</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            value={toDateInputValue(field.value)}
+                            min={toDateInputValue(form.watch("date")) || undefined}
+                            onChange={(e) => {
+                              field.onChange(e.target.value || undefined);
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-4">
                   <FormField
                     control={form.control}
                     name="location"
@@ -476,7 +542,7 @@ export default function Dashboard() {
                   <div className="space-y-2 mt-auto text-sm text-muted-foreground">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 shrink-0" />
-                      <span className="truncate">{format(new Date(event.date), "PPP")}</span>
+                      <span className="truncate">{formatEventDateRange(event.date, event.endDate)}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <MapPin className="w-4 h-4 shrink-0" />

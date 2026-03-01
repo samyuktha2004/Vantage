@@ -12,7 +12,9 @@ export const events = pgTable("events", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   date: timestamp("date").notNull(),
+  endDate: timestamp("end_date"),
   location: text("location").notNull(),
+  capacity: integer("capacity"), // Optional RSVP/hall capacity limit
   description: text("description"),
   eventCode: text("event_code").notNull().unique(),
   isPublished: boolean("is_published").default(false).notNull(),
@@ -182,6 +184,8 @@ export const guests = pgTable("guests", {
   // Flight status (Sprint 6) — set manually by ground team
   flightStatus: text("flight_status").default("unknown"),
   // "unknown" | "on_time" | "delayed" | "landed" | "cancelled"
+  // Hotel selection — guest picks from available hotel options (null = not yet selected)
+  selectedHotelBookingId: integer("selected_hotel_booking_id").references(() => hotelBookings.id),
 });
 
 // Family Members (for Rooming)
@@ -345,6 +349,8 @@ export const insertEventSchema = createInsertSchema(events).omit({
   eventCode: true // Auto-generated on server
 }).extend({
   date: z.union([z.date(), z.string().transform((str) => new Date(str))]),
+  endDate: z.union([z.date(), z.string().transform((str) => new Date(str))]).optional(),
+  capacity: z.number().int().nonnegative().optional(),
   clientName: z.string().min(1, "Client name is required"), // For event code generation
 });
 export const insertClientDetailsSchema = createInsertSchema(clientDetails).omit({ id: true });

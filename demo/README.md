@@ -4,9 +4,9 @@ Two pre-built guest lists for demo video recording.
 
 ## Files
 
-| File | Event | Guests |
-|------|-------|--------|
-| `sharma_wedding_guests.csv` | Sharma Wedding — Udaipur | 50 (5 VIP, 15 Family, 30 Friends) |
+| File                       | Event                       | Guests                                     |
+| -------------------------- | --------------------------- | ------------------------------------------ |
+| `Verma_wedding_guests.csv` | Verma Wedding — Udaipur     | 50 (5 VIP, 15 Family, 30 Friends)          |
 | `techsummit_delegates.csv` | TechSummit 2026 — Bengaluru | 70 (10 Executive, 50 Standard, 10 Speaker) |
 
 ## How to Use
@@ -21,15 +21,18 @@ Two pre-built guest lists for demo video recording.
 The `Category` column must match the label names you create:
 
 **Wedding:**
+
 - Create labels: `VIP`, `Family`, `Friends`
 - Labels are auto-matched (case-insensitive) on import
 
 **MICE:**
+
 - Create labels: `Executive`, `Standard`, `Speaker`
 
 ## EWS Demo Tip
 
 To trigger the EWS Critical alert during demo:
+
 - Wedding: Set hotel to 40 rooms, 38 guests will confirm → 95% → Critical badge
 - MICE: Set hotel to 120 rooms, import all 70 → manually boost to ~110 via edit → EWS triggers
 

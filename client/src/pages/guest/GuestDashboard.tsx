@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useGuestPortal } from "@/hooks/use-guest-portal";
 import { GuestLayout } from "@/components/GuestLayout";
@@ -22,9 +22,35 @@ import {
   ExternalLink,
   FileText,
   ClipboardList,
+  PartyPopper,
 } from "lucide-react";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
+
+function formatEventDateRange(startValue: unknown, endValue?: unknown): string {
+  const startDate = startValue instanceof Date
+    ? startValue
+    : typeof startValue === "string" && startValue
+      ? new Date(startValue)
+      : null;
+  const endDate = endValue instanceof Date
+    ? endValue
+    : typeof endValue === "string" && endValue
+      ? new Date(endValue)
+      : null;
+
+  if (!startDate || Number.isNaN(startDate.getTime())) return "TBD";
+  if (!endDate || Number.isNaN(endDate.getTime())) return format(startDate, "MMMM dd, yyyy");
+
+  const sameDay =
+    startDate.getFullYear() === endDate.getFullYear() &&
+    startDate.getMonth() === endDate.getMonth() &&
+    startDate.getDate() === endDate.getDate();
+
+  return sameDay
+    ? format(startDate, "MMMM dd, yyyy")
+    : `${format(startDate, "MMM dd, yyyy")} → ${format(endDate, "MMM dd, yyyy")}`;
+}
 
 export default function GuestDashboard() {
   const [match, params] = useRoute("/guest/:token");
@@ -32,6 +58,17 @@ export default function GuestDashboard() {
   const token = params?.token || "";
 
   const { data: guestData, isLoading } = useGuestPortal(token);
+  const wasOnWaitlistRef = useRef<boolean | null>(null);
+
+  // Detect waitlist promotion: was on waitlist last load, now off it
+  const justPromoted =
+    wasOnWaitlistRef.current === true && guestData?.isOnWaitlist === false;
+
+  useEffect(() => {
+    if (guestData) {
+      wasOnWaitlistRef.current = guestData.isOnWaitlist ?? false;
+    }
+  }, [guestData?.isOnWaitlist]);
 
   // Redirect pending guests directly into the wizard
   useEffect(() => {
@@ -71,8 +108,14 @@ export default function GuestDashboard() {
 
   // --- Confirmed booking receipt page ---
   const event = guestData.event;
-  const hasTravel = guestData.selfManageArrival !== undefined
-    || !!(guestData.arrivalPnr || guestData.departurePnr || guestData.extendedCheckIn);
+  const isWalkIn = guestData.registrationSource === "on_spot";
+  const hasTravel = (
+    guestData.selfManageArrival !== undefined ||
+    !!(guestData.arrivalPnr || guestData.departurePnr || guestData.extendedCheckIn)
+  );
+  const dietarySummary = guestData.mealPreference && guestData.mealPreference !== "standard"
+    ? guestData.mealPreference
+    : guestData.dietaryRestrictions;
 
   return (
     <GuestLayout step={1} token={token}>
@@ -88,13 +131,15 @@ export default function GuestDashboard() {
           </div>
           <h1 className="text-3xl font-serif text-primary">You're booked in!</h1>
           <p className="text-muted-foreground">
-            {guestData.confirmedSeats || 1} seat{(guestData.confirmedSeats || 1) > 1 ? "s" : ""} confirmed for {event?.name}
+            {isWalkIn
+              ? `Walk-in registration completed for ${event?.name}`
+              : `${guestData.confirmedSeats || 1} seat${(guestData.confirmedSeats || 1) > 1 ? "s" : ""} confirmed for ${event?.name}`}
           </p>
           <div className="flex flex-wrap justify-center gap-3 text-sm text-muted-foreground">
             {event?.date && (
               <span className="flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5" />
-                {format(new Date(event.date), "MMMM dd, yyyy")}
+                {formatEventDateRange(event.date, (event as any).endDate)}
               </span>
             )}
             {event?.location && (
@@ -158,13 +203,20 @@ export default function GuestDashboard() {
                 <div>
                   <p className="font-medium text-sm">RSVP & Guest Details</p>
                   <p className="text-xs text-muted-foreground">
-                    {guestData.confirmedSeats || 1} seat{(guestData.confirmedSeats || 1) > 1 ? "s" : ""} confirmed
+                    {isWalkIn
+                      ? "Walk-in registration completed"
+                      : `${guestData.confirmedSeats || 1} seat${(guestData.confirmedSeats || 1) > 1 ? "s" : ""} confirmed`}
                   </p>
+                  {dietarySummary && (
+                    <p className="text-xs text-muted-foreground capitalize">Meal/Dietary: {dietarySummary}</p>
+                  )}
                 </div>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => navigate(`/guest/${token}/rsvp`)}>
-                <Edit className="w-3.5 h-3.5 mr-1" /> Edit
-              </Button>
+              {!isWalkIn && (
+                <Button variant="ghost" size="sm" onClick={() => navigate(`/guest/${token}/rsvp`)}>
+                  <Edit className="w-3.5 h-3.5 mr-1" /> Edit
+                </Button>
+              )}
             </CardContent>
           </Card>
 
@@ -179,7 +231,11 @@ export default function GuestDashboard() {
                 <div>
                   <p className="font-medium text-sm">Travel Preferences</p>
                   <p className="text-xs text-muted-foreground">
-                    {hasTravel
+                    {isWalkIn
+                      ? (hasTravel
+                        ? (guestData.selfManageArrival ? "Self-arranged arrival" : "Group flight")
+                        : "Set return/interim travel if needed")
+                      : hasTravel
                       ? (guestData.selfManageArrival ? "Self-arranged arrival" : "Group flight")
                       : "Not set yet"}
                   </p>
@@ -258,8 +314,23 @@ export default function GuestDashboard() {
           </Card>
         </div>
 
-        {/* Waitlist if applicable */}
-        {guestData.isOnWaitlist && (
+        {/* Promoted off waitlist — celebration banner */}
+        {justPromoted && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="rounded-2xl bg-green-50 border border-green-200 p-5 text-center"
+          >
+            <PartyPopper className="w-8 h-8 text-green-600 mx-auto mb-2" />
+            <p className="font-semibold text-green-800">Room Confirmed!</p>
+            <p className="text-sm text-green-700 mt-1">
+              A room just opened up and you've been automatically moved off the waitlist. Your booking is now confirmed.
+            </p>
+          </motion.div>
+        )}
+
+        {/* Waitlist: show when on waitlist OR when hotel is full and can still join */}
+        {(guestData.isOnWaitlist || guestData.isHotelFull) && !justPromoted && (
           <WaitlistBell token={token} className="mt-2" />
         )}
       </div>

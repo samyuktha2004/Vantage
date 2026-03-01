@@ -517,14 +517,7 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <p className="text-sm text-muted-foreground">{hotelResults.length} hotels found</p>
-            {isLiveResult ? (
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-300">Live — TBO</span>
-            ) : (
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300">Demo Fallback</span>
-            )}
-          </div>
+          <p className="text-sm text-muted-foreground">{hotelResults.length} hotels found</p>
           <Button variant="ghost" size="sm" onClick={() => setPhase("search")}>
             ← Modify search
           </Button>

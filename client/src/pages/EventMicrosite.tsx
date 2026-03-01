@@ -56,13 +56,56 @@ const PRESETS: Record<string, { primary: string; fg: string }> = {
   custom: { primary: "#1B2D5B", fg: "#ffffff" },
 };
 
+function normalizeHex(hex: string): string {
+  const value = (hex || "").trim();
+  if (!value.startsWith("#")) return "#1B2D5B";
+  if (value.length === 4) {
+    return `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`;
+  }
+  if (value.length === 7) return value;
+  return "#1B2D5B";
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const safe = normalizeHex(hex);
+  return {
+    r: Number.parseInt(safe.slice(1, 3), 16),
+    g: Number.parseInt(safe.slice(3, 5), 16),
+    b: Number.parseInt(safe.slice(5, 7), 16),
+  };
+}
+
+function rgbaFromHex(hex: string, alpha: number): string {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(alpha, 1))})`;
+}
+
+function isLightColor(hex: string): boolean {
+  const { r, g, b } = hexToRgb(hex);
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return luminance > 0.62;
+}
+
+function getReadableText(hex: string): string {
+  return isLightColor(hex) ? "#0F172A" : "#FFFFFF";
+}
+
 function buildThemeStyle(themeColor: string, themePreset: string): React.CSSProperties {
   const preset = PRESETS[themePreset] ?? PRESETS.navy;
-  const primary = themePreset === "custom" && themeColor ? themeColor : preset.primary;
+  const primary = normalizeHex(themePreset === "custom" && themeColor ? themeColor : preset.primary);
+  const fg = getReadableText(primary);
+  const fgMuted = rgbaFromHex(fg, 0.78);
+  const fgSoft = rgbaFromHex(fg, 0.9);
+  const primaryOnLight = isLightColor(primary) ? "#0F172A" : primary;
   // Inject as inline CSS variables scoped to this page
   return {
     "--event-primary": primary,
-    "--event-fg": preset.fg,
+    "--event-fg": fg,
+    "--event-fg-muted": fgMuted,
+    "--event-fg-soft": fgSoft,
+    "--event-primary-on-light": primaryOnLight,
+    "--event-card-bg": rgbaFromHex(primary, 0.2),
+    "--event-card-border": rgbaFromHex(primary, 0.42),
   } as React.CSSProperties;
 }
 
@@ -259,6 +302,12 @@ export default function EventMicrosite() {
 
   const eventDate = event.date ? new Date(event.date) : null;
   const primaryColor: string = (themeStyle as any)["--event-primary"] ?? "#1B2D5B";
+  const primaryFg: string = (themeStyle as any)["--event-fg"] ?? "#FFFFFF";
+  const primaryFgMuted: string = (themeStyle as any)["--event-fg-muted"] ?? "rgba(255,255,255,0.78)";
+  const primaryFgSoft: string = (themeStyle as any)["--event-fg-soft"] ?? "rgba(255,255,255,0.9)";
+  const primaryOnLight: string = (themeStyle as any)["--event-primary-on-light"] ?? primaryColor;
+  const inviteCardBg: string = (themeStyle as any)["--event-card-bg"] ?? "rgba(27,45,91,0.2)";
+  const inviteCardBorder: string = (themeStyle as any)["--event-card-border"] ?? "rgba(27,45,91,0.42)";
   const hotelNights = event?.hotel?.checkIn && event?.hotel?.checkOut
     ? differenceInCalendarDays(new Date(event.hotel.checkOut), new Date(event.hotel.checkIn))
     : 1;
@@ -304,7 +353,7 @@ export default function EventMicrosite() {
     <div className="min-h-screen bg-background" style={themeStyle}>
       {/* ── Hero with cover media ── */}
       <div
-        className="relative text-white"
+        className="relative"
         style={{ background: `linear-gradient(135deg, ${primaryColor}e8, ${primaryColor})` }}
       >
         {/* Cover image or video overlay */}
@@ -326,13 +375,13 @@ export default function EventMicrosite() {
         ) : null}
 
         <div className="relative z-10 max-w-3xl mx-auto text-center py-14 sm:py-20 px-4">
-          <p className="text-white/70 text-xs font-semibold uppercase tracking-widest mb-3">
+          <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: primaryFgMuted }}>
             You're Invited — Join Us
           </p>
-          <h1 className="text-3xl sm:text-5xl md:text-6xl font-sans font-bold mb-5 drop-shadow-md">
+          <h1 className="text-3xl sm:text-5xl md:text-6xl font-sans font-bold mb-5 drop-shadow-md" style={{ color: primaryFg }}>
             {event.name}
           </h1>
-          <div className="flex flex-wrap items-center justify-center gap-5 text-white/80 text-sm mb-4">
+          <div className="flex flex-wrap items-center justify-center gap-5 text-sm mb-4" style={{ color: primaryFgSoft }}>
             {eventDate && (
               <span className="flex items-center gap-1.5">
                 <Calendar className="w-4 h-4" />
@@ -347,20 +396,37 @@ export default function EventMicrosite() {
             )}
           </div>
           {event.description && (
-            <p className="text-white/70 max-w-xl mx-auto text-sm leading-relaxed">
+            <p className="max-w-xl mx-auto text-sm leading-relaxed" style={{ color: primaryFgMuted }}>
               {event.description}
             </p>
           )}
           {/* Fallback personalised invite message when no cover media */}
           {!event.coverMediaUrl && event.inviteMessage && (
-            <p className="text-white/80 max-w-lg mx-auto text-sm leading-relaxed mt-3 italic">
-              {event.inviteMessage}
-            </p>
+            <Card className="mt-4 max-w-xl mx-auto text-left" style={{ backgroundColor: inviteCardBg, borderColor: inviteCardBorder }}>
+              <CardContent className="p-4 space-y-3">
+                <p className="text-sm leading-relaxed italic" style={{ color: primaryFgSoft }}>
+                  {event.inviteMessage}
+                </p>
+                <div className="rounded-md border p-3 space-y-2" style={{ borderColor: inviteCardBorder, backgroundColor: rgbaFromHex(primaryColor, 0.14) }}>
+                  <p className="text-[11px] uppercase tracking-wider font-medium" style={{ color: primaryFgMuted }}>
+                    Event Layout (Low Fidelity)
+                  </p>
+                  <div className="grid grid-cols-6 gap-1.5">
+                    <div className="col-span-6 h-2 rounded border" style={{ borderColor: inviteCardBorder, backgroundColor: rgbaFromHex(primaryColor, 0.24) }} />
+                    <div className="col-span-4 h-2 rounded border" style={{ borderColor: inviteCardBorder, backgroundColor: rgbaFromHex(primaryColor, 0.18) }} />
+                    <div className="col-span-2 h-2 rounded border" style={{ borderColor: inviteCardBorder, backgroundColor: rgbaFromHex(primaryColor, 0.18) }} />
+                    <div className="col-span-2 h-2 rounded border" style={{ borderColor: inviteCardBorder, backgroundColor: rgbaFromHex(primaryColor, 0.18) }} />
+                    <div className="col-span-2 h-2 rounded border" style={{ borderColor: inviteCardBorder, backgroundColor: rgbaFromHex(primaryColor, 0.18) }} />
+                    <div className="col-span-2 h-2 rounded border" style={{ borderColor: inviteCardBorder, backgroundColor: rgbaFromHex(primaryColor, 0.18) }} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           )}
           <div className="mt-6 flex items-center justify-center gap-3">
             <Dialog>
               <DialogTrigger asChild>
-                <Button className="px-6 py-3 bg-white text-primary font-semibold shadow-md hover:shadow-lg">
+                <Button className="px-6 py-3 bg-white font-semibold shadow-md hover:shadow-lg border" style={{ color: primaryOnLight, borderColor: inviteCardBorder }}>
                   Confirm Attendance — Reserve Your Spot
                 </Button>
               </DialogTrigger>
@@ -388,7 +454,7 @@ export default function EventMicrosite() {
                         <Input placeholder="eg: +91 98765 43210" value={regPhone} onChange={(e) => setRegPhone((e.target as HTMLInputElement).value)} />
                       </div>
                       <div className="flex justify-end mt-2">
-                        <Button className="bg-primary text-white" onClick={handleRegister}>
+                        <Button className="border" style={{ backgroundColor: primaryColor, color: primaryFg, borderColor: rgbaFromHex(primaryColor, 0.55) }} onClick={handleRegister}>
                           Confirm Attendance — Reserve Your Spot
                         </Button>
                       </div>
@@ -585,7 +651,8 @@ export default function EventMicrosite() {
                         setBookingLoading(false);
                       }
                     }}
-                    className="bg-primary text-white w-full sm:w-auto"
+                    className="w-full sm:w-auto border"
+                    style={{ backgroundColor: primaryColor, color: primaryFg, borderColor: rgbaFromHex(primaryColor, 0.55) }}
                     aria-label="Proceed"
                   >
                     {selectedRoom ? ((selectedRoom.price ?? 0) > 0 ? 'Continue to payment' : 'Reserve') : 'Select a room'}
@@ -650,7 +717,7 @@ export default function EventMicrosite() {
                     <div className="font-semibold">{selectedRoom ? `₹${(selectedRoom.price * hotelNights).toLocaleString('en-IN')}` : '—'}</div>
                   </div>
                   <div>
-                      <Button onClick={handleProceed} disabled={!selectedRoom} className="bg-primary text-white">
+                      <Button onClick={handleProceed} disabled={!selectedRoom} className="border" style={{ backgroundColor: primaryColor, color: primaryFg, borderColor: rgbaFromHex(primaryColor, 0.55) }}>
                       {selectedRoom ? ((selectedRoom.price ?? 0) > 0 ? 'Continue to payment' : 'Reserve') : 'Select a room'}
                     </Button>
                   </div>

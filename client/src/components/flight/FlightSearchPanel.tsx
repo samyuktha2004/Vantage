@@ -198,7 +198,6 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
   // State that persists across phases
   const [traceId, setTraceId] = useState("");
   const [flightResults, setFlightResults] = useState<FlightResult[]>([]);
-  const [isLiveResult, setIsLiveResult] = useState(false);
   const [selectedFlight, setSelectedFlight] = useState<FlightResult | null>(null);
   const [fareQuoteData, setFareQuoteData] = useState<any>(null);
     const [commissionType, setCommissionType] = useState<CommissionType>("amount");
@@ -246,7 +245,6 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
         .map((group: any[]) => group[0])
         .filter(Boolean);
 
-      const gotLive = results.length > 0;
       if (results.length === 0) {
         results = generateMockFlights({
           origin: searchParams.origin,
@@ -255,7 +253,6 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
         });
       }
 
-      setIsLiveResult(gotLive);
       setTraceId(tid);
       setFlightResults(results);
       setPhase("results");
@@ -533,23 +530,11 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <p className="text-sm text-muted-foreground">{flightResults.length} flights found</p>
-            {isLiveResult ? (
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-300">Live — TBO</span>
-            ) : (
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300">Demo Fallback</span>
-            )}
-          </div>
+          <p className="text-sm text-muted-foreground">{flightResults.length} flights found</p>
           <Button variant="ghost" size="sm" onClick={() => setPhase("search")}>
             ← Modify search
           </Button>
         </div>
-        {!isLiveResult && (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-            TBO returned no inventory for this route. Showing demo options — booking will be saved as a placeholder.
-          </p>
-        )}
         <FlightResultsList
           traceId={traceId}
           results={flightResults}

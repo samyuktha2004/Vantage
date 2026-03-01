@@ -6,7 +6,7 @@ interface HotelBookingItem {
   checkOutDate?: string;
   tboHotelData?: unknown;
 }
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLocation, useParams } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,11 +15,12 @@ import { DashboardLayout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useLabels } from "@/hooks/use-labels";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, ArrowRight, Check, Loader2, Zap, PenLine, CheckCircle2, Plus, X, Plane, TrainFront, Car, Bus, Ship } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, Zap, PenLine, CheckCircle2, Plus, X, Plane, TrainFront, Car, Bus, Ship, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { HotelSearchPanel } from "@/components/hotel/HotelSearchPanel";
@@ -69,6 +70,8 @@ export default function EventSetup() {
 
   // Step 1 — invite URL (writes to events.coverMediaUrl via PATCH)
   const [inviteUrl, setInviteUrl] = useState("");
+  const [inviteMediaType, setInviteMediaType] = useState<"image" | "video">("image");
+  const [isInviteUploading, setIsInviteUploading] = useState(false);
   const [scheduleText, setScheduleText] = useState("");
   const [inviteMessage, setInviteMessage] = useState("");
 
@@ -77,6 +80,7 @@ export default function EventSetup() {
   const [hotelBooked, setHotelBooked] = useState(false);
   const [hotelBookingSource, setHotelBookingSource] = useState<HotelBookingSource>(null);
   const [hotelBookings, setHotelBookings] = useState<HotelBookingItem[]>([]);
+  const [hotelAddPanelOpen, setHotelAddPanelOpen] = useState(true);
   const [hotelBaseRate, setHotelBaseRate] = useState(0);
   const [hotelCommissionType, setHotelCommissionType] = useState<CommissionType>("amount");
   const [hotelCommissionValue, setHotelCommissionValue] = useState(0);
@@ -154,6 +158,10 @@ export default function EventSetup() {
     },
   });
 
+  const { data: labels } = useLabels(Number(id));
+  const [clientDetailsExists, setClientDetailsExists] = useState<boolean | null>(null);
+  const [guestCategorySelections, setGuestCategorySelections] = useState<Record<number, boolean>>({});
+
   const hotelForm = useForm<HotelBookingFormValues>({
     resolver: zodResolver(hotelBookingSchema),
     defaultValues: {
@@ -168,8 +176,62 @@ export default function EventSetup() {
     fetchEventData();
   }, [id]);
 
+  const handleInviteFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const isImage = file.type.startsWith("image/");
+    const isVideo = file.type.startsWith("video/");
+    if (!isImage && !isVideo) {
+      toast({
+        title: "Unsupported file",
+        description: "Upload an image or video file.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const maxSizeBytes = 4 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      toast({
+        title: "File too large",
+        description: "Please upload a file smaller than 4MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsInviteUploading(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Failed to read file"));
+        reader.readAsDataURL(file);
+      });
+
+      if (!dataUrl.startsWith("data:")) {
+        throw new Error("Invalid file data");
+      }
+
+      setInviteUrl(dataUrl);
+      setInviteMediaType(isVideo ? "video" : "image");
+      toast({ title: "Invite media added" });
+    } catch (error: any) {
+      toast({
+        title: "Upload failed",
+        description: error?.message || "Could not process selected file",
+        variant: "destructive",
+      });
+    } finally {
+      setIsInviteUploading(false);
+      event.target.value = "";
+    }
+  };
+
   const fetchEventData = async () => {
     setIsDataLoading(true);
+    const prefillClientName = (new URLSearchParams(window.location.search).get("clientName") || "").trim();
     try {
       const [eventRes, travelRes, hotelRes, clientRes] = await Promise.all([
         fetch(`/api/events/${id}`, { credentials: "include" }),
@@ -182,6 +244,7 @@ export default function EventSetup() {
         const data = await eventRes.json();
         setEventData(data);
         if (data.coverMediaUrl) setInviteUrl(data.coverMediaUrl);
+        if (data.coverMediaType === "video") setInviteMediaType("video");
         if (data.scheduleText) setScheduleText(data.scheduleText);
         if (data.inviteMessage) setInviteMessage(data.inviteMessage);
       }
@@ -203,15 +266,18 @@ export default function EventSetup() {
       if (hotelRes.ok) {
         const bookings = await hotelRes.json();
         if (Array.isArray(bookings) && bookings.length > 0) {
-                    setHotelBookings(bookings);
-                    setHotelBookings([]);
-                    setHotelBooked(false);
-                    setHotelBookingSource(null);
+          setHotelBookings(bookings);
+          setHotelAddPanelOpen(false);
           const latest = bookings[bookings.length - 1];
           const hasTboData = Boolean(latest?.tboHotelData);
           const isMockFallback = detectMockHotelBooking(latest?.tboHotelData);
           setHotelBooked(true);
           setHotelBookingSource(isMockFallback ? "mock" : hasTboData ? "tbo" : "manual");
+        } else {
+          setHotelBookings([]);
+          setHotelAddPanelOpen(true);
+          setHotelBooked(false);
+          setHotelBookingSource(null);
         }
       }
 
@@ -226,6 +292,22 @@ export default function EventSetup() {
           hasFriends: cd.hasFriends ?? false,
           hasFamily: cd.hasFamily ?? false,
         });
+          setClientDetailsExists(true);
+          // initialize guest category selections for known labels if any
+          if (labels && labels.length > 0) {
+            const initial: Record<number, boolean> = {};
+            for (const lbl of labels) {
+              const name = String(lbl.name || "").toLowerCase();
+              if (name === "vip") initial[lbl.id] = Boolean(cd.hasVipGuests);
+              else if (name === "friends") initial[lbl.id] = Boolean(cd.hasFriends);
+              else if (name === "family") initial[lbl.id] = Boolean(cd.hasFamily);
+              else initial[lbl.id] = false;
+            }
+            setGuestCategorySelections(initial);
+          }
+        } else if (prefillClientName) {
+        clientForm.setValue("clientName", prefillClientName, { shouldDirty: false });
+          setClientDetailsExists(false);
       }
     } catch (error) {
       console.error("Failed to fetch event data", error);
@@ -251,7 +333,10 @@ export default function EventSetup() {
 
       // Persist invite URL, schedule, and invite message to event via PATCH
       const patchPayload: Record<string, string | null> = {};
-      if (inviteUrl.trim()) patchPayload.coverMediaUrl = inviteUrl.trim();
+      if (inviteUrl.trim()) {
+        patchPayload.coverMediaUrl = inviteUrl.trim();
+        patchPayload.coverMediaType = inviteMediaType;
+      }
       if (scheduleText.trim()) patchPayload.scheduleText = scheduleText.trim();
       if (inviteMessage.trim()) patchPayload.inviteMessage = inviteMessage.trim();
       if (Object.keys(patchPayload).length > 0) {
@@ -329,6 +414,7 @@ export default function EventSetup() {
       });
       setHotelBooked(true);
       setHotelBookingSource("manual");
+      setHotelAddPanelOpen(false);
       hotelForm.reset({
         hotelName: "",
         numberOfRooms: 1,
@@ -530,8 +616,23 @@ export default function EventSetup() {
                       value={inviteUrl}
                       onChange={(e) => setInviteUrl(e.target.value)}
                     />
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="file"
+                        accept="image/*,video/*"
+                        onChange={handleInviteFileUpload}
+                        disabled={isInviteUploading}
+                      />
+                      {isInviteUploading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+                    </div>
+                    {inviteUrl.startsWith("data:image/") && (
+                      <img src={inviteUrl} alt="Invite preview" className="w-full max-h-48 object-cover rounded-md border" />
+                    )}
+                    {inviteUrl.startsWith("data:video/") && (
+                      <video src={inviteUrl} controls className="w-full max-h-56 rounded-md border" />
+                    )}
                     <p className="text-xs text-muted-foreground">
-                      Paste a Google Drive, Canva, or any URL to a PDF, image, or video invite — shown to guests as "View Invite"
+                      Paste a Google Drive/Canva URL, or upload an image/video invite file.
                     </p>
                   </div>
 
@@ -567,59 +668,92 @@ export default function EventSetup() {
 
                   <div className="space-y-4">
                     <FormLabel>Guest Categories</FormLabel>
-                    <FormField
-                      control={clientForm.control}
-                      name="hasVipGuests"
-                      render={({ field }) => (
-                        <FormItem className="flex items-center space-x-2 space-y-0">
-                          <FormControl>
-                            <Checkbox
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
+                    {labels && labels.length > 0 ? (
+                      <div className="grid grid-cols-1 gap-2">
+                        {labels.map((lbl: any) => (
+                          <div key={lbl.id} className="flex items-center space-x-2">
+                            <input
+                              id={`label-${lbl.id}`}
+                              type="checkbox"
+                              checked={Boolean(guestCategorySelections[lbl.id])}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setGuestCategorySelections((s) => ({ ...s, [lbl.id]: checked }));
+                                // Map common tiers to existing boolean fields so they persist
+                                const name = String(lbl.name || "").toLowerCase();
+                                if (name === "vip") clientForm.setValue("hasVipGuests", checked);
+                                if (name === "friends") clientForm.setValue("hasFriends", checked);
+                                if (name === "family") clientForm.setValue("hasFamily", checked);
+                              }}
+                              className="w-4 h-4 rounded"
                             />
-                          </FormControl>
-                          <FormLabel className="font-normal cursor-pointer">
-                            VIP Guests
-                          </FormLabel>
-                        </FormItem>
-                      )}
-                    />
+                            <label htmlFor={`label-${lbl.id}`} className="font-normal cursor-pointer">
+                              {lbl.name}
+                            </label>
+                          </div>
+                        ))}
+                        <p className="text-xs text-muted-foreground">These are the custom guest categories imported for this event.</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-sm text-muted-foreground">No custom categories found — use the fields below.</p>
+                        <div className="mt-2 space-y-2">
+                          <FormField
+                            control={clientForm.control}
+                            name="hasVipGuests"
+                            render={({ field }) => (
+                              <FormItem className="flex items-center space-x-2 space-y-0">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                </FormControl>
+                                <FormLabel className="font-normal cursor-pointer">
+                                  VIP Guests
+                                </FormLabel>
+                              </FormItem>
+                            )}
+                          />
 
-                    <FormField
-                      control={clientForm.control}
-                      name="hasFriends"
-                      render={({ field }) => (
-                        <FormItem className="flex items-center space-x-2 space-y-0">
-                          <FormControl>
-                            <Checkbox
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
-                          </FormControl>
-                          <FormLabel className="font-normal cursor-pointer">
-                            Friends
-                          </FormLabel>
-                        </FormItem>
-                      )}
-                    />
+                          <FormField
+                            control={clientForm.control}
+                            name="hasFriends"
+                            render={({ field }) => (
+                              <FormItem className="flex items-center space-x-2 space-y-0">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                </FormControl>
+                                <FormLabel className="font-normal cursor-pointer">
+                                  Friends
+                                </FormLabel>
+                              </FormItem>
+                            )}
+                          />
 
-                    <FormField
-                      control={clientForm.control}
-                      name="hasFamily"
-                      render={({ field }) => (
-                        <FormItem className="flex items-center space-x-2 space-y-0">
-                          <FormControl>
-                            <Checkbox
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
-                          </FormControl>
-                          <FormLabel className="font-normal cursor-pointer">
-                            Family
-                          </FormLabel>
-                        </FormItem>
-                      )}
-                    />
+                          <FormField
+                            control={clientForm.control}
+                            name="hasFamily"
+                            render={({ field }) => (
+                              <FormItem className="flex items-center space-x-2 space-y-0">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                </FormControl>
+                                <FormLabel className="font-normal cursor-pointer">
+                                  Family
+                                </FormLabel>
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex justify-end">
@@ -655,7 +789,7 @@ export default function EventSetup() {
                   <Badge className="bg-green-100 text-green-700 border-green-300 flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3" />
                     {hotelBookingSource === "mock"
-                      ? "Confirmed via UAT fallback"
+                      ? "Booked via TBO"
                       : hotelBookingSource === "manual"
                       ? "Booked manually"
                       : "Booked via TBO"}
@@ -663,28 +797,30 @@ export default function EventSetup() {
                 )}
               </div>
 
-              <div className="flex gap-2 mt-4">
-                <button
-                  onClick={() => setHotelMode("tbo")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium border transition-colors ${
-                    hotelMode === "tbo"
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-input text-muted-foreground hover:border-primary/50"
-                  }`}
-                >
-                  <Zap className="w-3.5 h-3.5" /> Live TBO Search
-                </button>
-                <button
-                  onClick={() => setHotelMode("manual")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium border transition-colors ${
-                    hotelMode === "manual"
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-input text-muted-foreground hover:border-primary/50"
-                  }`}
-                >
-                  <PenLine className="w-3.5 h-3.5" /> Enter Manually
-                </button>
-              </div>
+              {(hotelBookings.length === 0 || hotelAddPanelOpen) && (
+                <div className="flex gap-2 mt-4">
+                  <button
+                    onClick={() => setHotelMode("tbo")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium border transition-colors ${
+                      hotelMode === "tbo"
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-input text-muted-foreground hover:border-primary/50"
+                    }`}
+                  >
+                    <Zap className="w-3.5 h-3.5" /> Live TBO Search
+                  </button>
+                  <button
+                    onClick={() => setHotelMode("manual")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium border transition-colors ${
+                      hotelMode === "manual"
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-input text-muted-foreground hover:border-primary/50"
+                    }`}
+                  >
+                    <PenLine className="w-3.5 h-3.5" /> Enter Manually
+                  </button>
+                </div>
+              )}
             </CardHeader>
 
             <CardContent>
@@ -695,8 +831,7 @@ export default function EventSetup() {
                     {hotelBookings.map((booking) => {
                       const parsed = parseTboHotelData(booking.tboHotelData);
                       const roomType = parsed?.roomTypeName || parsed?.originalRoom?.RoomTypeName;
-                      const isMock = Boolean(parsed?.isMockFallback);
-                      const sourceLabel = parsed ? (isMock ? "UAT fallback" : "TBO") : "Manual";
+                      const sourceLabel = parsed ? "TBO" : "Manual";
                       return (
                         <div key={booking.id} className="rounded-md border bg-background px-3 py-2">
                           <div className="flex items-center justify-between gap-2">
@@ -716,7 +851,29 @@ export default function EventSetup() {
                 </div>
               )}
 
-              {hotelMode === "tbo" && (
+              {hotelBookings.length > 0 && !hotelAddPanelOpen && (
+                <div className="space-y-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setHotelAddPanelOpen(true)}
+                    className="w-full"
+                  >
+                    <Plus className="w-4 h-4 mr-2" /> Add More Hotels
+                  </Button>
+
+                  <div className="flex justify-between pt-2 border-t">
+                    <Button type="button" variant="outline" onClick={() => setCurrentStep(1)}>
+                      <ArrowLeft className="w-4 h-4 mr-2" /> Back
+                    </Button>
+                    <Button type="button" onClick={() => setCurrentStep(3)}>
+                      Next: Travel Options <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {(hotelBookings.length === 0 || hotelAddPanelOpen) && hotelMode === "tbo" && (
                 <>
                   <HotelSearchPanel
                     eventId={Number(id)}
@@ -724,6 +881,7 @@ export default function EventSetup() {
                       const isMockFallback = Boolean((booking as any)?.tboHotelData?.isMockFallback);
                       setHotelBooked(true);
                       setHotelBookingSource(isMockFallback ? "mock" : "tbo");
+                      setHotelAddPanelOpen(false);
                       fetchEventData();
                     }}
                   />
@@ -738,7 +896,7 @@ export default function EventSetup() {
                 </>
               )}
 
-              {hotelMode === "manual" && (
+              {(hotelBookings.length === 0 || hotelAddPanelOpen) && hotelMode === "manual" && (
                 <Form {...hotelForm}>
                   <form onSubmit={hotelForm.handleSubmit(onHotelBookingSubmit)} className="space-y-6">
                     <FormField

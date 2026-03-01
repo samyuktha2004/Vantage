@@ -92,6 +92,12 @@ async function fetchItinerary(eventId: string) {
   return res.json();
 }
 
+async function fetchEvent(eventId: string) {
+  const res = await fetch(`/api/events/${eventId}`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to load event");
+  return res.json();
+}
+
 async function markArrived(guestId: number) {
   const res = await fetch(`/api/groundteam/checkin/${guestId}`, {
     method: "POST",
@@ -154,6 +160,13 @@ export default function CheckInDashboard() {
     queryFn: () => fetchItinerary(eventId),
     enabled: !!eventId,
     refetchInterval: autoRefresh ? 60000 : false,
+  });
+
+  const { data: event } = useQuery({
+    queryKey: ["ground-event", eventId],
+    queryFn: () => fetchEvent(eventId),
+    enabled: !!eventId,
+    staleTime: 60000,
   });
 
   const arrivedMutation = useMutation({
@@ -311,7 +324,13 @@ export default function CheckInDashboard() {
       <div className="bg-primary text-primary-foreground px-4 py-4 sticky top-0 z-10">
         <div className="max-w-lg mx-auto">
           <div className="flex items-center justify-between mb-3">
-            <h1 className="font-serif font-bold text-xl">Check-in</h1>
+            <div>
+              <h1 className="font-serif font-bold text-xl">Check-in</h1>
+              <p className="text-xs text-primary-foreground/80 mt-0.5 truncate max-w-[220px]">
+                {event?.name ?? "Current Event"}
+                {event?.eventCode ? ` · ${event.eventCode}` : ""}
+              </p>
+            </div>
             <div className="flex gap-2">
               <Button
                 variant="ghost"
@@ -413,7 +432,9 @@ export default function CheckInDashboard() {
               <p className="text-xs text-muted-foreground">{itinerary.length} total</p>
             </div>
             {itinerary.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No itinerary events configured yet.</p>
+              <p className="text-xs text-muted-foreground">
+                No itinerary events configured yet. Ask your planner to add sessions in Event Setup.
+              </p>
             ) : (
               [...(itinerary as any[])]
                 .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
@@ -557,7 +578,9 @@ export default function CheckInDashboard() {
 
         {!guestsLoading && filtered.length === 0 && (
           <div className="text-center py-8 text-muted-foreground text-sm">
-            {search ? "No guests match your search." : "No guests found for this event."}
+            {search
+              ? "No guests match your search. Try name, email, or booking ref."
+              : "No guests found for this event yet. Use Walk-in to register on spot or ask the planner to import guests."}
           </div>
         )}
 

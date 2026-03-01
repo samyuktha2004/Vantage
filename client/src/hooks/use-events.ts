@@ -35,9 +35,21 @@ export function useCreateEvent() {
       if (isNaN(dateValue.getTime())) {
         throw new Error("Invalid date provided");
       }
+
+      const endDateInput = (data as any).endDate;
+      let endDateIso: string | undefined;
+      if (endDateInput) {
+        const endDateValue = new Date(endDateInput);
+        if (isNaN(endDateValue.getTime())) {
+          throw new Error("Invalid end date provided");
+        }
+        endDateIso = endDateValue.toISOString();
+      }
+
       const payload = {
         ...data,
-        date: dateValue.toISOString() as any // Send ISO string for Zod coerce
+        date: dateValue.toISOString() as any,
+        ...(endDateIso ? { endDate: endDateIso as any } : {}),
       };
       
       const res = await fetch(api.events.create.path, {
@@ -46,7 +58,16 @@ export function useCreateEvent() {
         body: JSON.stringify(payload),
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to create event");
+      if (!res.ok) {
+        let message = "Failed to create event";
+        try {
+          const body = await res.json();
+          if (body?.message) message = body.message;
+        } catch {
+          // ignore parse failures and keep fallback message
+        }
+        throw new Error(message);
+      }
       return api.events.create.responses[201].parse(await res.json());
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [api.events.list.path] }),

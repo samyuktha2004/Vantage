@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useGuestPortal, useUpdateTravelPrefs, useUpdateBleisure } from "@/hooks/use-guest-portal";
+import { useGuestPortal, useUpdateTravelPrefs, useUpdateBleisure, useSelectHotel } from "@/hooks/use-guest-portal";
 import { GuestLayout } from "@/components/GuestLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
   const { data: guestData, isLoading } = useGuestPortal(token);
   const updateTravelPrefs = useUpdateTravelPrefs(token);
   const updateBleisure = useUpdateBleisure(token);
+  const selectHotel = useSelectHotel(token);
   const [, navigate] = useLocation();
 
   // Arrival
@@ -43,6 +44,9 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
   // Note for the event team
   const [agentNote, setAgentNote] = useState("");
 
+  // Hotel selection (when multiple hotels are available)
+  const [selectedHotelId, setSelectedHotelId] = useState<number | null>(null);
+
   // Hotel
   const [hotelMode, setHotelMode] = useState<"group" | "own" | "partial">("group");
   const [partialCheckIn, setPartialCheckIn] = useState("");
@@ -50,6 +54,9 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
 
   useEffect(() => {
     if (guestData) {
+      if (guestData.selectedHotelBookingId) setSelectedHotelId(guestData.selectedHotelBookingId);
+      else if (guestData.primaryHotel?.id) setSelectedHotelId(guestData.primaryHotel.id);
+
       if (guestData.arrivalMode) setArrivalMode(guestData.arrivalMode as TransportMode);
       else if (guestData.selfManageArrival) setArrivalMode("own_flight");
 
@@ -134,6 +141,12 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
         });
       }
 
+      // Save hotel selection if multiple options exist
+      const hotelOptions = guestData?.hotelOptions ?? [];
+      if (hotelOptions.length > 1 && selectedHotelId) {
+        await selectHotel.mutateAsync(selectedHotelId);
+      }
+
       toast({ title: "Travel preferences saved!" });
       navigate(`/guest/${token}/summary`);
     } catch (error: any) {
@@ -145,7 +158,7 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
     }
   };
 
-  const isSaving = updateTravelPrefs.isPending || updateBleisure.isPending;
+  const isSaving = updateTravelPrefs.isPending || updateBleisure.isPending || selectHotel.isPending;
 
   function TransportSelector({
     value,
@@ -323,6 +336,48 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
             )}
           </CardContent>
         </Card>
+
+        {/* Hotel Option Picker — shown only when agent has configured multiple hotel options */}
+        {(guestData.hotelOptions ?? []).length > 1 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Hotel className="w-5 h-5 text-primary" />
+                Choose Your Hotel
+              </CardTitle>
+              <CardDescription>
+                Your event has multiple accommodation options — pick your preference
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RadioGroup
+                value={selectedHotelId?.toString() ?? ""}
+                onValueChange={(v) => setSelectedHotelId(Number(v))}
+                className="space-y-3"
+              >
+                {(guestData.hotelOptions as any[]).map((hotel: any) => (
+                  <div
+                    key={hotel.id}
+                    className={`flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+                      selectedHotelId === hotel.id ? "border-primary bg-primary/5" : "border-border"
+                    }`}
+                  >
+                    <RadioGroupItem value={hotel.id.toString()} id={`hotel-${hotel.id}`} className="mt-0.5" />
+                    <label htmlFor={`hotel-${hotel.id}`} className="cursor-pointer flex-1">
+                      <div className="font-medium">{hotel.name}</div>
+                      {hotel.checkIn && hotel.checkOut && (
+                        <div className="text-sm text-muted-foreground mt-0.5">
+                          {format(new Date(hotel.checkIn), "MMM d")} – {format(new Date(hotel.checkOut), "MMM d, yyyy")}
+                        </div>
+                      )}
+                      <Badge variant="secondary" className="mt-2 text-xs">Host covered</Badge>
+                    </label>
+                  </div>
+                ))}
+              </RadioGroup>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Hotel Stay */}
         <Card>

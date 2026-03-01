@@ -188,6 +188,27 @@ export function useUpdateProfile(token: string) {
 }
 
 /**
+ * Hook to select a hotel option
+ */
+export function useSelectHotel(token: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (hotelBookingId: number | null) => {
+      const res = await fetch(`/api/guest/${token}/hotel-selection`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hotelBookingId }),
+      });
+      if (!res.ok) throw new Error("Failed to select hotel");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['guest-portal', token] });
+    },
+  });
+}
+
+/**
  * Hook to update travel preferences
  */
 export function useUpdateTravelPrefs(token: string) {

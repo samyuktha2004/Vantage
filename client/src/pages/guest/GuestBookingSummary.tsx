@@ -137,6 +137,26 @@ export default function GuestBookingSummary({ token }: { token: string }) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {/* Primary hotel details */}
+            {guestData.primaryHotel && (
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Hotel className="w-4 h-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm">{guestData.primaryHotel.name}</p>
+                  {(hostCheckIn || guestData.primaryHotel.checkIn) && (hostCheckOut || guestData.primaryHotel.checkOut) && (
+                    <p className="text-xs text-muted-foreground">
+                      {format(new Date(hostCheckIn ?? guestData.primaryHotel.checkIn), "EEE, MMM d")}
+                      {" → "}
+                      {format(new Date(hostCheckOut ?? guestData.primaryHotel.checkOut), "EEE, MMM d, yyyy")}
+                      {groupNights > 0 && ` · ${groupNights} night${groupNights > 1 ? "s" : ""}`}
+                    </p>
+                  )}
+                  <Badge variant="secondary" className="mt-1 text-xs">Host covered · ₹0 to you</Badge>
+                </div>
+              </div>
+            )}
             {/* Pre-event extension */}
             {preNights > 0 && (
               <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">

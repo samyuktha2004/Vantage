@@ -209,10 +209,30 @@ export async function registerRoutes(
       }
       
       const event = await storage.createEvent({ ...input, eventCode, agentId: user.id });
+
+      // Seed client details with the provided client name so Event Setup autofills immediately.
+      // Address/phone are intentionally left blank for later completion by agent/client.
+      const seededClientName = String(req.body.clientName || "").trim() || "Client";
+      await storage.createClientDetails({
+        eventId: event.id,
+        clientName: seededClientName,
+        address: "",
+        phone: "",
+        hasVipGuests: false,
+        hasFriends: false,
+        hasFamily: false,
+      });
+
       console.log("Create event - Created event:", event);
       res.status(201).json(event);
     } catch (err: any) {
       console.error("Create event error:", err?.message || err);
+
+      if (String(err?.message || "").includes("end_date")) {
+        return res.status(500).json({
+          message: "Database update required for date ranges. Please run migration 005_add_event_end_date.sql.",
+        });
+      }
       
       // Handle database constraint violations
       if (err?.code === '23505') {
@@ -297,11 +317,16 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only agents or clients can update events" });
       }
       const eventId = Number(req.params.id);
+      const event = await storage.getEvent(eventId);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
 
-      // Scope check: clients may only edit events they own
+      // Scope check: clients may only edit events they own OR events matching their assigned event code
       if (user.role === "client") {
-        const event = await storage.getEvent(eventId);
-        if (!event || event.clientId !== user.id) {
+        const canEditAsOwner = event.clientId === user.id;
+        const canEditByCode = !!user.eventCode && event.eventCode === user.eventCode;
+        if (!canEditAsOwner && !canEditByCode) {
           return res.status(403).json({ message: "You can only update your own events" });
         }
       }
@@ -310,7 +335,14 @@ export async function registerRoutes(
       const updates: Record<string, any> = {};
       if (coverMediaUrl !== undefined) {
         const url = (coverMediaUrl || "").trim();
-        updates.coverMediaUrl = url && url.length <= 2048 ? url : null;
+        const isDataUrl = /^data:(image|video)\//.test(url);
+        if (!url) {
+          updates.coverMediaUrl = null;
+        } else if (isDataUrl) {
+          updates.coverMediaUrl = url.length <= 6_000_000 ? url : null;
+        } else {
+          updates.coverMediaUrl = url.length <= 2048 ? url : null;
+        }
       }
       if (coverMediaType !== undefined) updates.coverMediaType = coverMediaType;
       if (themeColor !== undefined) updates.themeColor = themeColor;
@@ -370,11 +402,23 @@ export async function registerRoutes(
   app.post("/api/events/:id/client-details", async (req, res) => {
     try {
       const user = getUser(req);
-      if (!user || user.role !== "agent") {
-        return res.status(403).json({ message: "Only agents can add client details" });
+      if (!user || (user.role !== "agent" && user.role !== "client")) {
+        return res.status(403).json({ message: "Only agents or clients can add client details" });
       }
 
       const eventId = Number(req.params.id);
+      const event = await storage.getEvent(eventId);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+
+      if (user.role === "client") {
+        const canEditAsOwner = event.clientId === user.id;
+        const canEditByCode = !!user.eventCode && event.eventCode === user.eventCode;
+        if (!canEditAsOwner && !canEditByCode) {
+          return res.status(403).json({ message: "You can only edit details for your own event" });
+        }
+      }
       
       // Check if client details already exist for this event
       const existingDetails = await storage.getClientDetails(eventId);
@@ -607,23 +651,18 @@ export async function registerRoutes(
   app.get(api.guests.list.path, async (req, res) => {
     try {
       const eventId = Number(req.params.eventId);
-      console.log('[DEBUG] Fetching guests for event:', eventId);
       const guests = await storage.getGuests(eventId);
-      console.log('[DEBUG] Found guests:', guests.length, guests);
       res.json(guests);
     } catch (error) {
-      console.error('[ERROR] Failed to fetch guests:', error);
-      res.status(500).json({ message: "Failed to fetch guests", error: String(error) });
+      console.error('Failed to fetch guests:', error);
+      res.status(500).json({ message: "Failed to fetch guests" });
     }
   });
 
   app.post(api.guests.create.path, async (req, res) => {
     try {
-      console.log('[DEBUG] Creating guest for event:', req.params.eventId);
-      console.log('[DEBUG] Guest data:', req.body);
       const input = api.guests.create.input.parse(req.body);
       const guest = await storage.createGuest({ ...input, eventId: Number(req.params.eventId) });
-      console.log('[DEBUG] Created guest successfully');
       res.status(201).json(guest);
     } catch (err: any) {
       console.error('[ERROR] Failed to create guest:', err.message || String(err));

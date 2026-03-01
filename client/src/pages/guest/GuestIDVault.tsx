@@ -1,3 +1,17 @@
+/**
+ * GuestIDVault — Travel Document Upload & Verification
+ *
+ * STATUS: UI + schema complete. OCR processing is currently mocked
+ * (simulated 2s delay, always returns "verified"). Not included in demo.
+ *
+ * FUTURE INTEGRATION — plug in one of:
+ *   • AWS Textract: DetectDocumentText API — extracts text from passport/Aadhaar images
+ *   • Google Document AI: batchProcessDocuments — structured extraction for identity docs
+ *   • Onfido SDK: full identity verification with liveness check (recommended for production KYC)
+ *
+ * When ready, replace the setTimeout block in `handleProcessOCR` with a
+ * POST to your backend OCR endpoint, which should return { extractedName, confidence }.
+ */
 import { useState, useRef } from "react";
 import { useGuestPortal, useUploadID } from "@/hooks/use-guest-portal";
 import { GuestLayout } from "@/components/GuestLayout";
