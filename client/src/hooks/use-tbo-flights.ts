@@ -9,7 +9,9 @@ async function apiFetch(url: string, body: Record<string, unknown>) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message ?? "TBO Flight API error");
+    const e: any = new Error(err.message ?? "TBO Flight API error");
+    e.status = res.status;
+    throw e;
   }
   return res.json();
 }

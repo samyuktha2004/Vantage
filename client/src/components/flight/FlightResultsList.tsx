@@ -56,6 +56,12 @@ function formatTime(dt: string): string {
   try { return format(new Date(dt), "HH:mm"); } catch { return dt; }
 }
 
+function formatMoney(currency?: string, amount?: unknown) {
+  const num = typeof amount === "number" ? amount : (amount ? Number(String(amount)) : NaN);
+  const formatted = Number.isFinite(num) ? num.toLocaleString() : "—";
+  return `${currency ?? ""} ${formatted}`.trim();
+}
+
 export function FlightResultsList({ traceId, results, onSelect }: Props) {
   if (!results || results.length === 0) {
     return (
@@ -135,7 +141,7 @@ export function FlightResultsList({ traceId, results, onSelect }: Props) {
                 {/* Price */}
                 <div className="text-right shrink-0">
                   <p className="font-bold text-primary">
-                    {flight.Fare.Currency} {flight.Fare.TotalFare.toLocaleString()}
+                    {formatMoney(flight.Fare?.Currency, flight.Fare?.TotalFare ?? flight.Fare?.BaseFare)}
                   </p>
                   <p className="text-xs text-muted-foreground">per person</p>
                   <div className="flex flex-col gap-1 mt-1.5">

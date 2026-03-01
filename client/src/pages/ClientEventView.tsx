@@ -569,6 +569,14 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
                               <Badge className="text-xs">{g.registrationSource ?? 'invited'}</Badge>
                               <Badge className="text-xs">Seats: {g.confirmedSeats ?? 0}/{g.allocatedSeats ?? 1}</Badge>
                               {g.mealPreference && <Badge className="text-xs">{g.mealPreference}</Badge>}
+                              {g.labelId && (() => {
+                                const lbl = (labels ?? []).find((l: any) => l.id === g.labelId);
+                                return lbl ? (
+                                  <Badge className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-100">
+                                    {lbl.name}
+                                  </Badge>
+                                ) : null;
+                              })()}
                               {getSelfPaidLabels(g).map((selfPaidLabel) => (
                                 <Badge key={`${g.id}-${selfPaidLabel}`} className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-100">
                                   {selfPaidLabel}

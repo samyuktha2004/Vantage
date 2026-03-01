@@ -47,6 +47,26 @@ export function useCreateGuest() {
   });
 }
 
+export function useUpdateGuest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, eventId, ...data }: { id: number; eventId: number } & Partial<GuestInput>) => {
+      const url = buildUrl(api.guests.update.path, { id });
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update guest");
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.guests.list.path, variables.eventId] });
+    },
+  });
+}
+
 export function useDeleteGuest() {
   const queryClient = useQueryClient();
   return useMutation({

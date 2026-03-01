@@ -14,7 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useGuests, useDeleteGuest } from "@/hooks/use-guests";
+import { useGuests, useDeleteGuest, useUpdateGuest } from "@/hooks/use-guests";
 import { useLabels } from "@/hooks/use-labels";
 import { usePerks } from "@/hooks/use-perks";
 import { useRequests } from "@/hooks/use-requests";
@@ -121,6 +121,12 @@ export default function EventDetails() {
   const { data: requests } = useRequests(id);
   const { data: hotelBookings } = useHotelBookings(id);
   const deleteGuest = useDeleteGuest();
+  const updateGuest = useUpdateGuest();
+  const [updatingLabelForGuest, setUpdatingLabelForGuest] = useState<number | null>(null);
+  const labelMap = useMemo(
+    () => new Map((labels ?? []).map((l: any) => [l.id, l])),
+    [labels]
+  );
   const { data: inventoryStatus } = useQuery({
     queryKey: ['inventory-status', id],
     queryFn: async () => {
@@ -1308,6 +1314,50 @@ export default function EventDetails() {
                       }`}>
                         {guest.status}
                       </span>
+                    )}
+                    {/* Label badge + inline assignment */}
+                    {(labels && labels.length > 0) && (
+                      guest.labelId ? (
+                        <select
+                          className="inline-block mt-1 ml-2 px-2 py-0.5 rounded text-xs bg-amber-100 text-amber-800 border border-amber-200 cursor-pointer"
+                          value={guest.labelId}
+                          disabled={updatingLabelForGuest === guest.id}
+                          onChange={async (e) => {
+                            const newLabelId = e.target.value ? Number(e.target.value) : null;
+                            setUpdatingLabelForGuest(guest.id);
+                            try {
+                              await updateGuest.mutateAsync({ id: guest.id, eventId: id, labelId: newLabelId as any });
+                            } finally {
+                              setUpdatingLabelForGuest(null);
+                            }
+                          }}
+                        >
+                          {(labels as any[]).map((l: any) => (
+                            <option key={l.id} value={l.id}>{l.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <select
+                          className="inline-block mt-1 ml-2 px-2 py-0.5 rounded text-xs bg-muted text-muted-foreground border border-border cursor-pointer"
+                          value=""
+                          disabled={updatingLabelForGuest === guest.id}
+                          onChange={async (e) => {
+                            if (!e.target.value) return;
+                            const newLabelId = Number(e.target.value);
+                            setUpdatingLabelForGuest(guest.id);
+                            try {
+                              await updateGuest.mutateAsync({ id: guest.id, eventId: id, labelId: newLabelId as any });
+                            } finally {
+                              setUpdatingLabelForGuest(null);
+                            }
+                          }}
+                        >
+                          <option value="">Assign label…</option>
+                          {(labels as any[]).map((l: any) => (
+                            <option key={l.id} value={l.id}>{l.name}</option>
+                          ))}
+                        </select>
+                      )
                     )}
                     {getSelfPaidLabels(guest).map((selfPaidLabel) => (
                       <span key={`${guest.id}-${selfPaidLabel}`} className="inline-block mt-1 ml-2 px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">

@@ -117,13 +117,10 @@ tboFlightRoutes.post("/api/tbo/flight/search", async (req, res) => {
 
     res.json(result);
   } catch (err: any) {
-    // "No result found" is TBO's normal empty-inventory response — return empty results
-    // so the UI can display "No flights found" rather than an unavailable error.
-    if (/no result/i.test(err.message ?? "")) {
-      return res.json({ Response: { TraceId: "", Results: [], Error: { ErrorCode: 0, ErrorMessage: "" } } });
-    }
+    // Any TBO failure (missing credentials, network down, no results) → return empty results
+    // so the client-side mock fallback (generateMockFlights) can take over seamlessly.
     console.error("[TBO Flight] searchFlights error:", err.message);
-    res.status(502).json({ message: err.message ?? "TBO Flight search failed" });
+    return res.json({ Response: { TraceId: "", Results: [], Error: { ErrorCode: 0, ErrorMessage: err.message ?? "TBO unavailable" } } });
   }
 });
 

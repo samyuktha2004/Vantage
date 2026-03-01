@@ -7,7 +7,7 @@
 
 import { Router } from 'express';
 import { db } from './db';
-import { guests, guestFamily, itineraryEvents, guestItinerary, events, labels, labelPerks, perks, guestRequests, groupInventory, hotelBookings } from '@shared/schema';
+import { guests, guestFamily, itineraryEvents, guestItinerary, events, labels, labelPerks, perks, guestRequests, groupInventory, hotelBookings, bookingLabelInclusions } from '@shared/schema';
 import { eq, and, lt, sql, sum, asc } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
@@ -149,6 +149,19 @@ guestRoutes.get('/api/guest/portal/:token', async (req, res) => {
         }
       : null;
 
+    // Fetch label inclusions — which hotel/flight bookings are included for this guest's tier
+    const labelInclusions = guest.labelId
+      ? await db
+          .select()
+          .from(bookingLabelInclusions)
+          .where(
+            and(
+              eq(bookingLabelInclusions.labelId, guest.labelId),
+              eq(bookingLabelInclusions.isIncluded, true)
+            )
+          )
+      : [];
+
     // Calculate usedBudget: sum of budgetConsumed for approved requests
     const usedBudgetResult = await db
       .select({ total: sql<number>`coalesce(sum(${guestRequests.budgetConsumed}), 0)` })
@@ -192,6 +205,7 @@ guestRoutes.get('/api/guest/portal/:token', async (req, res) => {
       isHotelFull,
       primaryHotel,
       hotelOptions,
+      labelInclusions,
       myRequests,
     });
     

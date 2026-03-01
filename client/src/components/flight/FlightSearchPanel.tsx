@@ -258,9 +258,23 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
       setFlightResults(results);
       setPhase("results");
     } catch (err: any) {
-      const msg: string = err.message ?? "TBO unavailable";
-      setSearchError(msg);
-      toast({ title: "Search failed", description: msg, variant: "destructive" });
+      // Distinguish unauthorized vs provider/unavailable errors
+      if (err?.status === 401) {
+        const msg = "Agent sign-in required for live flight search (unauthorized).";
+        setSearchError(msg);
+        toast({ title: "Not signed in", description: msg, variant: "destructive" });
+      } else {
+        // TBO unavailable — fall back to mock flights so the flow can still be simulated
+        const mockResults = generateMockFlights({
+          origin: searchParams.origin,
+          destination: searchParams.destination,
+          departureDate: searchParams.departureDate,
+        });
+        setTraceId("");
+        setFlightResults(mockResults);
+        setPhase("results");
+        toast({ title: "Showing sample flights", description: "Live search unavailable — demo data loaded.", variant: "default" });
+      }
     }
   };
 

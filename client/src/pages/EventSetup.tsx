@@ -188,6 +188,7 @@ export default function EventSetup() {
   const createLabel = useCreateLabel();
   const [newLabelName, setNewLabelName] = useState("");
   const [isAddingLabel, setIsAddingLabel] = useState(false);
+  const [showAddLabelInput, setShowAddLabelInput] = useState(false);
   const [clientDetailsExists, setClientDetailsExists] = useState<boolean | null>(null);
   const [guestCategorySelections, setGuestCategorySelections] = useState<Record<number, boolean>>({});
   const [bookingLabelInclusions, setBookingLabelInclusions] = useState<BookingLabelInclusionItem[]>([]);
@@ -779,33 +780,6 @@ export default function EventSetup() {
 
                   <div className="space-y-4">
                     <FormLabel>Guest Categories</FormLabel>
-                    <div className="flex items-center space-x-2 mb-2">
-                      <input
-                        placeholder="New category name"
-                        value={newLabelName}
-                        onChange={(e) => setNewLabelName(e.target.value)}
-                        className="px-2 py-1 rounded border border-input bg-background text-sm"
-                      />
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={async () => {
-                          if (!newLabelName || !newLabelName.trim()) return;
-                          try {
-                            setIsAddingLabel(true);
-                            await createLabel.mutateAsync({ eventId: Number(id), name: newLabelName.trim() });
-                            setNewLabelName("");
-                            toast({ title: "Category created" });
-                          } catch (e: any) {
-                            toast({ title: "Failed to create", description: e?.message || "", variant: "destructive" });
-                          } finally {
-                            setIsAddingLabel(false);
-                          }
-                        }}
-                      >
-                        {isAddingLabel ? 'Creating...' : 'Add Category'}
-                      </Button>
-                    </div>
                     {labels && labels.length > 0 ? (
                       <div className="grid grid-cols-1 gap-2">
                         {labels.map((lbl: any) => (
@@ -831,6 +805,46 @@ export default function EventSetup() {
                           </div>
                         ))}
                         <p className="text-xs text-muted-foreground">These are the custom guest categories imported for this event.</p>
+
+                        {/* Add category control at the bottom-right of the list */}
+                        <div className="flex justify-end mt-2">
+                          {showAddLabelInput ? (
+                            <div className="flex items-center space-x-2">
+                              <input
+                                placeholder="New category name"
+                                value={newLabelName}
+                                onChange={(e) => setNewLabelName(e.target.value)}
+                                className="px-2 py-1 rounded border border-input bg-background text-sm"
+                              />
+                              <Button
+                                size="sm"
+                                onClick={async () => {
+                                  if (!newLabelName || !newLabelName.trim()) return;
+                                  try {
+                                    setIsAddingLabel(true);
+                                    await createLabel.mutateAsync({ eventId: Number(id), name: newLabelName.trim() });
+                                    setNewLabelName("");
+                                    setShowAddLabelInput(false);
+                                    toast({ title: "Category created" });
+                                  } catch (e: any) {
+                                    toast({ title: "Failed to create", description: e?.message || "", variant: "destructive" });
+                                  } finally {
+                                    setIsAddingLabel(false);
+                                  }
+                                }}
+                              >
+                                {isAddingLabel ? "Creating..." : "Add"}
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => { setShowAddLabelInput(false); setNewLabelName(""); }}>
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button size="sm" variant="ghost" onClick={() => setShowAddLabelInput(true)}>
+                              <Plus className="w-4 h-4 mr-2" /> Add Category
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     ) : (
                       <div>
