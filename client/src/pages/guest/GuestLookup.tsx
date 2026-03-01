@@ -24,7 +24,8 @@ export default function GuestLookup() {
 
   // Redirect on success — go to GuestDashboard which handles pending→RSVP redirect automatically
   if (guest) {
-    setLocation(`/guest/${guest.accessToken}`);
+    const token = guest.accessToken || guest.bookingRef;
+    if (token) setLocation(`/guest/${token}`);
   }
 
   return (

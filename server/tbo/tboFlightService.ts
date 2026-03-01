@@ -76,6 +76,7 @@ async function getFlightToken(): Promise<string> {
       EndUserIp: endUserIp,
       BookingMode: "API",
     }),
+    signal: AbortSignal.timeout(15000),
   });
 
   const rawAuth = await res.text();

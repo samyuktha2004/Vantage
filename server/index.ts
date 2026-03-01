@@ -13,7 +13,7 @@ const httpServer = createServer(app);
 
 // Prefer Postgres session store (survives restarts); fall back to MemoryStore if no DB
 const store = pool
-  ? new (connectPg(session))({ pool, tableName: "session", createTableIfMissing: false })
+  ? new (connectPg(session))({ pool, tableName: "session", createTableIfMissing: true })
   : new (MemoryStore(session))({ checkPeriod: 86400000 });
 
 declare module "http" {

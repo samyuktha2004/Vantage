@@ -66,6 +66,7 @@ async function tboHotelFetchOnce<T>(
     method,
     headers: hotelHeaders(),
     body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,
+    signal: AbortSignal.timeout(15000),
   });
 
   const data = await parseJsonSafe(res);

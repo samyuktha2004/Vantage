@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS session (
 );
 ALTER TABLE session DROP CONSTRAINT IF EXISTS session_pkey;
 ALTER TABLE session ADD CONSTRAINT session_pkey PRIMARY KEY (sid);
-CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON session (expire);
+CREATE INDEX IF NOT EXISTS idx_session_expire ON session (expire);
 `;
 
 try {

@@ -436,8 +436,12 @@ guestRoutes.post('/api/guest/:token/upload-id', async (req, res) => {
     const { token } = req.params;
     const { documentUrl, verifiedName } = req.body;
     
+    if (!verifiedName) {
+      return res.status(400).json({ message: "verifiedName is required" });
+    }
+
     const guest = await getGuestByToken(token);
-    
+
     // Verify name match (case-insensitive)
     const nameMatch = verifiedName.toLowerCase().trim() === guest.name.toLowerCase().trim();
     

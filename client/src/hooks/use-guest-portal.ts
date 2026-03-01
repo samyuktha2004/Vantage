@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
+import { useToast } from "@/hooks/use-toast";
 
 /**
  * Hook to access guest portal with token
@@ -25,6 +26,7 @@ export function useGuestPortal(token: string) {
  */
 export function useUpdateRSVP(token: string) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: async (data: {
       status: 'confirmed' | 'declined';
@@ -43,6 +45,9 @@ export function useUpdateRSVP(token: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['guest-portal', token] });
     },
+    onError: () => {
+      toast({ title: "Failed to save RSVP", description: "Please try again.", variant: "destructive" });
+    },
   });
 }
 
@@ -51,6 +56,7 @@ export function useUpdateRSVP(token: string) {
  */
 export function useUpdateBleisure(token: string) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: async (data: {
       extendedCheckIn?: Date;
@@ -67,6 +73,9 @@ export function useUpdateBleisure(token: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['guest-portal', token] });
+    },
+    onError: () => {
+      toast({ title: "Failed to save dates", description: "Please try again.", variant: "destructive" });
     },
   });
 }
@@ -126,6 +135,7 @@ export function useToggleSelfManagement(token: string) {
  */
 export function useJoinWaitlist(token: string) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: async () => {
       const url = buildUrl(api.guests.joinWaitlist.path, { token });
@@ -138,6 +148,9 @@ export function useJoinWaitlist(token: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['guest-portal', token] });
     },
+    onError: () => {
+      toast({ title: "Could not join waitlist", description: "Please try again.", variant: "destructive" });
+    },
   });
 }
 
@@ -146,6 +159,7 @@ export function useJoinWaitlist(token: string) {
  */
 export function useRegisterForEvent(token: string) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: async (eventId: number) => {
       const url = buildUrl(api.itinerary.register.path, { token, eventId: eventId.toString() });
@@ -157,6 +171,9 @@ export function useRegisterForEvent(token: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['guest-portal', token] });
+    },
+    onError: () => {
+      toast({ title: "Could not register", description: "Please try again.", variant: "destructive" });
     },
   });
 }
@@ -193,6 +210,7 @@ export function useUpdateProfile(token: string) {
  */
 export function useSelectHotel(token: string) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: async (hotelBookingId: number | null) => {
       const res = await fetch(`/api/guest/${token}/hotel-selection`, {
@@ -205,6 +223,9 @@ export function useSelectHotel(token: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['guest-portal', token] });
+    },
+    onError: () => {
+      toast({ title: "Failed to save hotel selection", description: "Please try again.", variant: "destructive" });
     },
   });
 }
@@ -247,6 +268,7 @@ export function useUpdateTravelPrefs(token: string) {
  */
 export function useSubmitGuestRequest(token: string) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: async (data: {
       type: string;
@@ -266,6 +288,9 @@ export function useSubmitGuestRequest(token: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['guest-portal', token] });
     },
+    onError: () => {
+      toast({ title: "Request could not be submitted", description: "Please try again.", variant: "destructive" });
+    },
   });
 }
 
@@ -274,6 +299,7 @@ export function useSubmitGuestRequest(token: string) {
  */
 export function useUnregisterFromEvent(token: string) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: async (eventId: number) => {
       const url = buildUrl(api.itinerary.unregister.path, { token, eventId: eventId.toString() });
@@ -285,6 +311,9 @@ export function useUnregisterFromEvent(token: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['guest-portal', token] });
+    },
+    onError: () => {
+      toast({ title: "Could not unregister", description: "Please try again.", variant: "destructive" });
     },
   });
 }

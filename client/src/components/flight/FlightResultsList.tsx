@@ -29,10 +29,27 @@ interface Props {
 }
 
 function parseDuration(dur: string): string {
-  // TBO returns duration like "P0DT2H10M"
-  const match = dur?.match(/(\d+)H(\d+)M/);
+  // TBO returns duration like "P0DT2H10M" but some providers may return numbers or other shapes.
+  if (dur === undefined || dur === null) return "—";
+  if (typeof dur === "number") {
+    const hrs = Math.floor(dur / 60);
+    const mins = Math.round(dur % 60);
+    return `${hrs}h ${mins}m`;
+  }
+  const s = String(dur);
+  const match = s.match(/(\d+)H(\d+)M/);
   if (match) return `${match[1]}h ${match[2]}m`;
-  return dur ?? "—";
+  // Fallback: extract digits and interpret as total minutes when sensible
+  const digits = (s.replace(/\D/g, "") || "");
+  if (digits) {
+    const num = parseInt(digits, 10);
+    if (!isNaN(num)) {
+      const hrs = Math.floor(num / 60);
+      const mins = num % 60;
+      return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+    }
+  }
+  return s || "—";
 }
 
 function formatTime(dt: string): string {
@@ -55,10 +72,18 @@ export function FlightResultsList({ traceId, results, onSelect }: Props) {
         if (!outbound) return null;
 
         const stops = flight.Segments[0].length - 1;
-        const totalDuration = flight.Segments[0].reduce(
-          (acc, seg) => acc + (seg.Duration ? parseInt(seg.Duration.replace(/\D/g, "")) : 0),
-          0
-        );
+        const totalDuration = flight.Segments[0].reduce((acc, seg) => {
+          const raw = seg.Duration;
+          let mins = 0;
+          if (typeof raw === "number") {
+            mins = Math.round(raw);
+          } else if (raw) {
+            const digits = String(raw).replace(/\D/g, "");
+            mins = digits ? parseInt(digits, 10) : 0;
+            if (Number.isNaN(mins)) mins = 0;
+          }
+          return acc + mins;
+        }, 0);
 
         return (
           <Card

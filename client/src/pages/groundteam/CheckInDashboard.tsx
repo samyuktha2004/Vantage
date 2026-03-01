@@ -149,12 +149,18 @@ export default function CheckInDashboard() {
     refetchInterval: autoRefresh ? 30000 : false,
   });
 
-  const { data: guests = [], isLoading: guestsLoading, refetch: refetchGuests } = useQuery({
+  const { data: guests = [], isLoading: guestsLoading, refetch: refetchGuests, error: guestsError } = useQuery({
     queryKey: ["guests-checkin", eventId],
     queryFn: () => fetchGuests(eventId),
     enabled: !!eventId,
     refetchInterval: autoRefresh ? 30000 : false,
   });
+
+  useEffect(() => {
+    if (guestsError) {
+      toast({ title: "Error loading guests", description: (guestsError as Error).message, variant: "destructive" });
+    }
+  }, [guestsError]);
 
   const { data: itinerary = [] } = useQuery({
     queryKey: ["ground-itinerary", eventId],
@@ -223,7 +229,7 @@ export default function CheckInDashboard() {
     onSuccess: (data) => {
       toast({
         title: `${walkInName} registered!`,
-        description: `Booking ref: ${data.guest?.bookingRef}`,
+        description: `Booking ref: ${data?.guest?.bookingRef || 'N/A'}`,
       });
       setShowWalkInForm(false);
       setWalkInName(""); setWalkInEmail(""); setWalkInPhone(""); setWalkInMeal("standard");

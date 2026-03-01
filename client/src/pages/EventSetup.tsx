@@ -39,6 +39,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { HotelSearchPanel } from "@/components/hotel/HotelSearchPanel";
 import { FlightSearchPanel } from "@/components/flight/FlightSearchPanel";
+import NotFound from "@/pages/not-found";
 
 // Step 1: Client Details
 const clientDetailsSchema = z.object({
@@ -262,6 +263,7 @@ export default function EventSetup() {
   };
 
   const fetchEventData = async () => {
+    if (!id) return;
     setIsDataLoading(true);
     const prefillClientName = (new URLSearchParams(window.location.search).get("clientName") || "").trim();
     try {
@@ -617,6 +619,8 @@ export default function EventSetup() {
       </DashboardLayout>
     );
   }
+
+  if (!id) return <NotFound />;
 
   return (
     <DashboardLayout>

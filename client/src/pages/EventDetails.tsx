@@ -4,7 +4,8 @@ import { useEvent } from "@/hooks/use-events";
 import { useRoute, useLocation } from "wouter";
 import ClientEventView from "./ClientEventView";
 import { Loader2, Users, Tag, Gift, Inbox, Upload, FileSpreadsheet, Download, Eye, Edit, Plus, Trash2, Settings, FileDown, CheckSquare, BarChart3, Hotel, Plane, AlertTriangle, Globe, UserPlus, Copy } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "@shared/routes";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -80,6 +81,7 @@ export default function EventDetails() {
   const id = Number(params?.id);
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const { data: event, isLoading: isEventLoading } = useEvent(id);
 
@@ -336,7 +338,7 @@ export default function EventDetails() {
       const res = await fetch(`/api/events/${id}/publish`, { method: "POST", credentials: "include" });
       if (!res.ok) throw new Error("Failed to publish event");
       toast({ title: "Event published!", description: "Your event microsite is now live." });
-      window.location.reload();
+      queryClient.invalidateQueries({ queryKey: [api.events.get.path, id] });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
@@ -428,13 +430,7 @@ export default function EventDetails() {
       setImportedGuests([]);
       setShowImportPreview(false);
       
-      // Force refetch and wait for it
       await refetchGuests();
-      
-      // Small delay to ensure UI updates
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
     } catch (error: any) {
       toast({ title: "Import failed", description: error.message, variant: "destructive" });
     } finally {
@@ -461,7 +457,7 @@ export default function EventDetails() {
       setNewLabelName("");
       setNewLabelBudget(0);
       setShowLabelDialog(false);
-      window.location.reload(); // Refresh to show new label
+      queryClient.invalidateQueries({ queryKey: [api.labels.list.path, id] });
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
@@ -516,7 +512,7 @@ export default function EventDetails() {
       });
       setSelectedPerkLabelIds([]);
       setShowPerkDialog(false);
-      window.location.reload(); // Refresh to show new perk
+      queryClient.invalidateQueries({ queryKey: [api.perks.list.path, id] });
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
@@ -811,11 +807,23 @@ export default function EventDetails() {
   const hasGuestFilters =
     guestSearchTerm.trim().length > 0 || guestStatusFilter !== "all" || guestCategoryFilter !== "all";
 
-  if (isEventLoading || !event) {
+  if (isEventLoading) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-full">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (!event) {
+    return (
+      <DashboardLayout>
+        <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
+          <p className="text-2xl font-serif text-muted-foreground">Event not found</p>
+          <p className="text-sm text-muted-foreground">This event may have been removed or you may not have access.</p>
+          <Button variant="outline" onClick={() => navigate("/dashboard")}>Back to Dashboard</Button>
         </div>
       </DashboardLayout>
     );
