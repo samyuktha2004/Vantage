@@ -6,19 +6,18 @@ const pool = new pg.Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-const sql = `
-CREATE TABLE IF NOT EXISTS session (
-  sid varchar NOT NULL COLLATE "default",
-  sess json NOT NULL,
-  expire timestamp(6) NOT NULL
-);
-ALTER TABLE session DROP CONSTRAINT IF EXISTS session_pkey;
-ALTER TABLE session ADD CONSTRAINT session_pkey PRIMARY KEY (sid);
-CREATE INDEX IF NOT EXISTS idx_session_expire ON session (expire);
-`;
-
 try {
-  await pool.query(sql);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS session (
+      sid varchar NOT NULL,
+      sess json NOT NULL,
+      expire timestamp(6) NOT NULL,
+      CONSTRAINT session_pkey PRIMARY KEY (sid) NOT DEFERRABLE INITIALLY IMMEDIATE
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON session (expire)
+  `);
   console.log("Session table ready");
 } catch (error) {
   console.error("Failed to provision session table:", error?.message ?? error);

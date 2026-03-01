@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS "session" (
 
 ALTER TABLE IF EXISTS "session" ADD CONSTRAINT IF NOT EXISTS "session_pkey" PRIMARY KEY ("sid");
 
+-- Drop any previously created index variants (handle quoted/case-sensitive names)
+DROP INDEX IF EXISTS "IDX_session_expire";
+DROP INDEX IF EXISTS idx_session_expire;
 CREATE INDEX IF NOT EXISTS idx_session_expire ON session (expire);
 
 -- Notes:

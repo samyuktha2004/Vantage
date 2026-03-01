@@ -12,9 +12,33 @@ const app = express();
 const httpServer = createServer(app);
 
 // Prefer Postgres session store (survives restarts); fall back to MemoryStore if no DB
-const store = pool
-  ? new (connectPg(session))({ pool, tableName: "session", createTableIfMissing: true })
-  : new (MemoryStore(session))({ checkPeriod: 86400000 });
+let store: any;
+if (pool) {
+  // createTableIfMissing is disabled — we provision the table ourselves with IF NOT EXISTS
+  // to avoid the "IDX_session_expire already exists" error on every restart.
+  store = new (connectPg(session))({ pool, tableName: "session", createTableIfMissing: false });
+} else {
+  store = new (MemoryStore(session))({ checkPeriod: 86400000 });
+}
+
+async function ensureSessionTable() {
+  if (!pool) return;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS session (
+        sid varchar NOT NULL,
+        sess json NOT NULL,
+        expire timestamp(6) NOT NULL,
+        CONSTRAINT session_pkey PRIMARY KEY (sid) NOT DEFERRABLE INITIALLY IMMEDIATE
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON session (expire)
+    `);
+  } catch (err: any) {
+    console.error("[session] failed to provision session table:", err?.message ?? err);
+  }
+}
 
 declare module "http" {
   interface IncomingMessage {
@@ -98,6 +122,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  await ensureSessionTable();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
