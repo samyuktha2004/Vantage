@@ -53,18 +53,28 @@ export default function GroundTeamSignIn() {
         throw new Error(err.message || "Sign in failed");
       }
 
-      // Fetch assigned event
+      // Fetch assigned events (may be multiple)
       const eventRes = await fetch("/api/groundteam/my-event", {
         credentials: "include",
       });
 
       if (!eventRes.ok) {
         const err = await eventRes.json();
-        throw new Error(err.message || "Could not load assigned event");
+        throw new Error(err.message || "Could not load assigned event(s)");
       }
 
-      const event = await eventRes.json();
-      navigate(`/groundteam/${event.id}/checkin`);
+      const data = await eventRes.json();
+      if (Array.isArray(data)) {
+        if (data.length === 1) {
+          navigate(`/groundteam/${data[0].id}/checkin`);
+        } else {
+          navigate(`/groundteam/select`);
+        }
+      } else if (data?.id) {
+        navigate(`/groundteam/${data.id}/checkin`);
+      } else {
+        throw new Error("No assigned event found");
+      }
     } catch (err: any) {
       setError(err.message || "Failed to sign in");
     } finally {

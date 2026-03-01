@@ -402,22 +402,38 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message ?? "Failed to save flight booking");
+        // Try to parse JSON error, fallback to text to avoid unhandled exceptions
+        let errBody: any = null;
+        try {
+          errBody = await res.json();
+        } catch (e) {
+          try {
+            errBody = await res.text();
+          } catch (e2) {
+            errBody = { message: `HTTP ${res.status}` };
+          }
+        }
+        console.error("[FlightSearch] save travel-option failed:", errBody);
+        const msg = errBody && (errBody.message || errBody) ? (errBody.message ?? String(errBody)) : "Failed to save flight booking";
+        throw new Error(msg);
       }
 
       toast({
         title: "Flight booked!",
         description: `PNR: ${pnr} — ${searchParams.origin} → ${searchParams.destination}`,
       });
-      onBooked({
-        travelMode: "flight",
-        fromLocation: searchParams.origin,
-        toLocation: searchParams.destination,
-        departureDate: searchParams.departureDate,
-        returnDate: searchParams.returnDate,
-        tboFlightData,
-      });
+      try {
+        onBooked({
+          travelMode: "flight",
+          fromLocation: searchParams.origin,
+          toLocation: searchParams.destination,
+          departureDate: searchParams.departureDate,
+          returnDate: searchParams.returnDate,
+          tboFlightData,
+        });
+      } catch (cbErr) {
+        console.error("[FlightSearch] onBooked callback threw:", cbErr);
+      }
     } catch (err: any) {
       toast({ title: "Booking failed", description: err.message, variant: "destructive" });
     } finally {

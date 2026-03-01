@@ -252,6 +252,48 @@ export default function GuestAddOns({ token }: { token: string }) {
           <p className="text-muted-foreground">Personalise your experience</p>
         </div>
 
+        {/* Included in Your Package — hotel/flight inclusions from label tier */}
+        {(() => {
+          const inclusions: Array<{ bookingType: string; bookingId: number; inclusions?: string | null }> =
+            guestData.labelInclusions ?? [];
+          const includedHotels = inclusions
+            .filter((li) => li.bookingType === "hotel")
+            .map((li) => {
+              const hotel = (guestData.hotelOptions ?? []).find((h: any) => h.id === li.bookingId);
+              return hotel ? { ...hotel, notes: li.inclusions } : null;
+            })
+            .filter(Boolean);
+          if (includedHotels.length === 0) return null;
+          return (
+            <div className="space-y-3">
+              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Included in Your Stay</h2>
+              {includedHotels.map((hotel: any) => (
+                <Card key={hotel.id} className="border-green-200 bg-green-50/40">
+                  <CardContent className="pt-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Hotel className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-medium">{hotel.name}</p>
+                          {hotel.checkIn && hotel.checkOut && (
+                            <p className="text-sm text-muted-foreground">
+                              {format(new Date(hotel.checkIn), "d MMM")} – {format(new Date(hotel.checkOut), "d MMM yyyy")}
+                            </p>
+                          )}
+                          {hotel.notes && (
+                            <p className="text-xs text-muted-foreground mt-1">{hotel.notes}</p>
+                          )}
+                        </div>
+                      </div>
+                      <Badge className="bg-green-100 text-green-700 border-none shrink-0">Complimentary</Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          );
+        })()}
+
         {/* Perks Grid */}
         {perks.length > 0 ? (
           <div className="space-y-3">

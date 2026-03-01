@@ -1844,11 +1844,13 @@ export async function registerRoutes(
         return res.status(404).json({ message: "No event assigned to this account" });
       }
       const events = await storage.getEventsByCode(user.eventCode);
-      const event = events[0];
-      if (!event) {
+      if (!events || events.length === 0) {
         return res.status(404).json({ message: "Assigned event not found" });
       }
-      res.json({ id: event.id, name: event.name, eventCode: event.eventCode });
+      // Return full list of assigned events (id, name, eventCode) so client can
+      // let ground team choose when they are assigned to multiple events.
+      const out = events.map(e => ({ id: e.id, name: e.name, eventCode: e.eventCode }));
+      res.json(out);
     } catch (err: any) {
       res.status(500).json({ message: err.message ?? "Failed" });
     }

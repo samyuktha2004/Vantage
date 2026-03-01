@@ -44,6 +44,7 @@ import EventMicrosite from "@/pages/EventMicrosite";
 // Ground Team
 import CheckInDashboard from "@/pages/groundteam/CheckInDashboard";
 import RoomingList from "@/pages/groundteam/RoomingList";
+import SelectEvent from "@/pages/groundteam/SelectEvent";
 
 function HomeRoute() {
   const { user, isLoading } = useAuth();
@@ -156,6 +157,7 @@ function Router() {
       {/* Ground Team Routes (authenticated via session, scoped to event) */}
       <Route path="/groundteam/:eventId/checkin" component={CheckInDashboard} />
       <Route path="/groundteam/:eventId/rooming" component={RoomingList} />
+      <Route path="/groundteam/select" component={SelectEvent} />
 
       {/* Fallback */}
       <Route component={NotFound} />

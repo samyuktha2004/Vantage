@@ -110,6 +110,8 @@ export const bookingLabelInclusions = pgTable(
 export const travelSchedules = pgTable("travel_schedules", {
   id: serial("id").primaryKey(),
   travelOptionId: integer("travel_option_id").notNull().references(() => travelOptions.id),
+  // Optional denormalized link to the parent event for easier queries and relations
+  eventId: integer("event_id").references(() => events.id),
   scheduleType: text("schedule_type").notNull(), // 'departure' or 'return'
   carrier: text("carrier").notNull(), // Airline or Train operator
   flightNumber: text("flight_number"),
@@ -336,6 +338,7 @@ export const travelOptionsRelations = relations(travelOptions, ({ one, many }) =
 
 export const travelSchedulesRelations = relations(travelSchedules, ({ one }) => ({
   travelOption: one(travelOptions, { fields: [travelSchedules.travelOptionId], references: [travelOptions.id] }),
+  event: one(events, { fields: [travelSchedules.eventId], references: [events.id] }),
 }));
 
 export const labelsRelations = relations(labels, ({ one, many }) => ({

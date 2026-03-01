@@ -158,7 +158,19 @@ export default function Dashboard() {
     if (!isGroundTeam) return;
     fetch("/api/groundteam/my-event", { credentials: "include" })
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.id) navigate(`/groundteam/${data.id}/checkin`); })
+      .then(data => {
+        if (!data) return;
+        // API now returns an array of events. If single, redirect directly.
+        if (Array.isArray(data)) {
+          if (data.length === 1) {
+            navigate(`/groundteam/${data[0].id}/checkin`);
+          } else if (data.length > 1) {
+            navigate(`/groundteam/select`);
+          }
+          return;
+        }
+        if (data?.id) navigate(`/groundteam/${data.id}/checkin`);
+      })
       .catch(() => {});
   }, [isGroundTeam]);
 
@@ -513,26 +525,29 @@ export default function Dashboard() {
                     Active
                   </span>
                   {isAgent && <EWSBadge eventId={event.id} />}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <button className="p-2 hover:bg-muted rounded-lg transition-colors">
-                        <MoreVertical className="w-5 h-5 text-muted-foreground" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem 
-                        className="text-destructive focus:text-destructive cursor-pointer"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setDeleteEventId(event.id);
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete Event
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  {/* Delete dropdown - agent only per PRD */}
+                  {isAgent && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <button className="p-2 hover:bg-muted rounded-lg transition-colors">
+                          <MoreVertical className="w-5 h-5 text-muted-foreground" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem 
+                          className="text-destructive focus:text-destructive cursor-pointer"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDeleteEventId(event.id);
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete Event
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               </div>
               
@@ -580,20 +595,23 @@ export default function Dashboard() {
                       >
                         <Gift className="w-3 h-3" />
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 w-8 p-0"
-                        aria-label="Setup"
-                        title="Setup"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          navigate(`/events/${event.id}/setup`);
-                        }}
-                      >
-                        <Settings className="w-3 h-3" />
-                      </Button>
+                      {/* Setup button - agent only (event configuration) */}
+                      {isAgent && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          aria-label="Setup"
+                          title="Setup"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            navigate(`/events/${event.id}/setup`);
+                          }}
+                        >
+                          <Settings className="w-3 h-3" />
+                        </Button>
+                      )}
                     </div>
                   </div>
 

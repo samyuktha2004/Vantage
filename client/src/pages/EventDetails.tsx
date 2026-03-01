@@ -85,18 +85,10 @@ export default function EventDetails() {
   const { user } = useAuth();
   const { data: event, isLoading: isEventLoading } = useEvent(id);
 
-  // Clients get a read+limited view instead of the full agent tabs
-  if (user?.role === "client") {
-    return (
-      <DashboardLayout>
-        <div className="mb-6">
-          <h1 className="text-3xl font-serif text-primary">{event?.name ?? "Loading…"}</h1>
-          {event?.location && <p className="text-muted-foreground mt-1">{event.location}</p>}
-        </div>
-        <ClientEventView eventId={id} />
-      </DashboardLayout>
-    );
-  }
+  // Role-based access flags - both agents and clients can access the tabbed interface
+  // with certain features restricted per role
+  const isAgent = user?.role === "agent";
+  const isClient = user?.role === "client";
   
   // Get tab from URL query parameter
   const urlParams = new URLSearchParams(window.location.search);
@@ -903,15 +895,18 @@ export default function EventDetails() {
                 </>
               )}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate(`/events/${id}/setup`)}
-              className="gap-2"
-            >
-              <Edit className="w-4 h-4" />
-              Edit Setup
-            </Button>
+            {/* Edit Setup button - agent only */}
+            {isAgent && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate(`/events/${id}/setup`)}
+                className="gap-2"
+              >
+                <Edit className="w-4 h-4" />
+                Edit Setup
+              </Button>
+            )}
 
             <Button
               size="sm"
@@ -921,7 +916,8 @@ export default function EventDetails() {
               <Eye className="w-4 h-4" />
               Preview Event
             </Button>
-            {!event.isPublished ? (
+            {/* Publish button - agent only */}
+            {isAgent && !event.isPublished && (
               <Button
                 size="sm"
                 variant="default"
@@ -936,7 +932,9 @@ export default function EventDetails() {
                 )}
                 Publish Event
               </Button>
-            ) : (
+            )}
+            {/* Published status badge - visible to all */}
+            {event.isPublished && (
               <>
                 <span className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-md font-medium">
                   <Globe className="w-3.5 h-3.5" /> Published
@@ -965,15 +963,18 @@ export default function EventDetails() {
                 </Button>
               </>
             )}
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setShowStaffDialog(true)}
-              className="gap-2"
-            >
-              <UserPlus className="w-4 h-4" />
-              Add Staff
-            </Button>
+            {/* Add Staff button - agent only */}
+            {isAgent && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowStaffDialog(true)}
+                className="gap-2"
+              >
+                <UserPlus className="w-4 h-4" />
+                Add Staff
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -1099,35 +1100,34 @@ export default function EventDetails() {
                 </span>
               )}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowLabelDialog(true)}
-              className="gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Add Label
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowPerkDialog(true)}
-              className="gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Add Perk
-            </Button>
+            {/* Add Label - agent only (clients can view/toggle but not create) */}
+            {isAgent && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowLabelDialog(true)}
+                className="gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Add Label
+              </Button>
+            )}
+            {/* Add Perk - agent only (clients can view/toggle but not create) */}
+            {isAgent && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowPerkDialog(true)}
+                className="gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Add Perk
+              </Button>
+            )}
           </div>
         </div>
       </div>
-      {/* Capacity Alert */}
-      {hotelBookings && hotelBookings.length > 0 && (
-        <CapacityAlert 
-          totalRooms={hotelBookings.reduce((sum: number, booking: any) => sum + (booking.numberOfRooms || 0), 0)}
-          totalGuests={guests?.length || 0}
-          className="mb-6"
-        />
-      )}
+      {/* Capacity Alert (single instance shown above) - removed duplicate */}
       {/* Tabs */}
       <div id="event-details-tabs">
       <Tabs defaultValue={initialTab} className="w-full">
@@ -1492,15 +1492,17 @@ export default function EventDetails() {
           <div className="flex justify-between items-center mb-4">
             <div>
               <h3 className="text-lg font-sans font-medium">Guest Labels & Permissions</h3>
-              <p className="text-sm text-muted-foreground">Create categories and assign perks to each label</p>
+              <p className="text-sm text-muted-foreground">{isAgent ? "Create categories and assign perks to each label" : "View and manage perk coverage for each label"}</p>
             </div>
-            <Dialog open={showLabelDialog} onOpenChange={setShowLabelDialog}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Label
-                </Button>
-              </DialogTrigger>
+            {/* Add Label dialog - agent only for creation */}
+            {isAgent && (
+              <Dialog open={showLabelDialog} onOpenChange={setShowLabelDialog}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Label
+                  </Button>
+                </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Create New Label</DialogTitle>
@@ -1541,6 +1543,7 @@ export default function EventDetails() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+            )}
           </div>
 
           <div className="grid gap-4">
@@ -1623,15 +1626,17 @@ export default function EventDetails() {
           <div className="flex justify-between items-center mb-4">
             <div>
               <h3 className="text-lg font-medium">Perks & Add-ons</h3>
-              <p className="text-sm text-muted-foreground">Define services guests can request</p>
+              <p className="text-sm text-muted-foreground">{isAgent ? "Define services guests can request" : "View available perks for this event"}</p>
             </div>
-            <Dialog open={showPerkDialog} onOpenChange={setShowPerkDialog}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Perk
-                </Button>
-              </DialogTrigger>
+            {/* Add Perk dialog - agent only for creation */}
+            {isAgent && (
+              <Dialog open={showPerkDialog} onOpenChange={setShowPerkDialog}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Perk
+                  </Button>
+                </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Create New Perk</DialogTitle>
@@ -1779,6 +1784,7 @@ export default function EventDetails() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+            )}
           </div>
 
           <div className="grid gap-4">
@@ -1832,90 +1838,93 @@ export default function EventDetails() {
         </TabsContent>
 
         <TabsContent value="itinerary" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Manage Itinerary</CardTitle>
-              <CardDescription>
-                Create and edit the event schedule. Changes reflect in guest itinerary automatically.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid md:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>Title *</Label>
-                  <Input
-                    value={itineraryForm.title}
-                    onChange={(e) => setItineraryForm({ ...itineraryForm, title: e.target.value })}
-                    placeholder="e.g. Welcome Dinner"
-                  />
+          {/* Manage Itinerary Card - agent only for creating/editing */}
+          {isAgent && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Manage Itinerary</CardTitle>
+                <CardDescription>
+                  Create and edit the event schedule. Changes reflect in guest itinerary automatically.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Title *</Label>
+                    <Input
+                      value={itineraryForm.title}
+                      onChange={(e) => setItineraryForm({ ...itineraryForm, title: e.target.value })}
+                      placeholder="e.g. Welcome Dinner"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Location</Label>
+                    <Input
+                      value={itineraryForm.location}
+                      onChange={(e) => setItineraryForm({ ...itineraryForm, location: e.target.value })}
+                      placeholder="e.g. Grand Ballroom"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Start Time *</Label>
+                    <Input
+                      type="datetime-local"
+                      value={itineraryForm.startTime}
+                      onChange={(e) => setItineraryForm({ ...itineraryForm, startTime: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>End Time *</Label>
+                    <Input
+                      type="datetime-local"
+                      value={itineraryForm.endTime}
+                      onChange={(e) => setItineraryForm({ ...itineraryForm, endTime: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Capacity</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={itineraryForm.capacity}
+                      onChange={(e) => setItineraryForm({ ...itineraryForm, capacity: e.target.value })}
+                      placeholder="Optional"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 pt-7">
+                    <Checkbox
+                      id="itinerary-mandatory"
+                      checked={itineraryForm.isMandatory}
+                      onCheckedChange={(checked) => setItineraryForm({ ...itineraryForm, isMandatory: !!checked })}
+                    />
+                    <Label htmlFor="itinerary-mandatory">Mandatory event</Label>
+                  </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Location</Label>
+                  <Label>Description</Label>
                   <Input
-                    value={itineraryForm.location}
-                    onChange={(e) => setItineraryForm({ ...itineraryForm, location: e.target.value })}
-                    placeholder="e.g. Grand Ballroom"
+                    value={itineraryForm.description}
+                    onChange={(e) => setItineraryForm({ ...itineraryForm, description: e.target.value })}
+                    placeholder="Optional details"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Start Time *</Label>
-                  <Input
-                    type="datetime-local"
-                    value={itineraryForm.startTime}
-                    onChange={(e) => setItineraryForm({ ...itineraryForm, startTime: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>End Time *</Label>
-                  <Input
-                    type="datetime-local"
-                    value={itineraryForm.endTime}
-                    onChange={(e) => setItineraryForm({ ...itineraryForm, endTime: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Capacity</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={itineraryForm.capacity}
-                    onChange={(e) => setItineraryForm({ ...itineraryForm, capacity: e.target.value })}
-                    placeholder="Optional"
-                  />
-                </div>
-                <div className="flex items-center gap-2 pt-7">
-                  <Checkbox
-                    id="itinerary-mandatory"
-                    checked={itineraryForm.isMandatory}
-                    onCheckedChange={(checked) => setItineraryForm({ ...itineraryForm, isMandatory: !!checked })}
-                  />
-                  <Label htmlFor="itinerary-mandatory">Mandatory event</Label>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Description</Label>
-                <Input
-                  value={itineraryForm.description}
-                  onChange={(e) => setItineraryForm({ ...itineraryForm, description: e.target.value })}
-                  placeholder="Optional details"
-                />
-              </div>
 
-              <div className="flex items-center gap-2">
-                <Button onClick={handleSaveItinerary} disabled={isSavingItinerary}>
-                  {isSavingItinerary ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  {editingItineraryId ? "Update Event" : "Add Event"}
-                </Button>
-                {editingItineraryId && (
-                  <Button variant="outline" onClick={resetItineraryForm}>Cancel Edit</Button>
-                )}
-                <Button variant="outline" onClick={handleSeedItinerary} disabled={isSeedingItinerary}>
-                  {isSeedingItinerary ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Add Demo Events
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+                <div className="flex items-center gap-2">
+                  <Button onClick={handleSaveItinerary} disabled={isSavingItinerary}>
+                    {isSavingItinerary ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                    {editingItineraryId ? "Update Event" : "Add Event"}
+                  </Button>
+                  {editingItineraryId && (
+                    <Button variant="outline" onClick={resetItineraryForm}>Cancel Edit</Button>
+                  )}
+                  <Button variant="outline" onClick={handleSeedItinerary} disabled={isSeedingItinerary}>
+                    {isSeedingItinerary ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                    Add Demo Events
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -1950,14 +1959,17 @@ export default function EventDetails() {
                           {item.location && <p className="text-xs text-muted-foreground">{item.location}</p>}
                           {item.description && <p className="text-sm mt-1">{item.description}</p>}
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <Button size="sm" variant="outline" onClick={() => handleEditItinerary(item)}>
-                            <Edit className="w-3.5 h-3.5 mr-1.5" /> Edit
-                          </Button>
-                          <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDeleteItinerary(item.id)}>
-                            <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Delete
-                          </Button>
-                        </div>
+                        {/* Edit/Delete buttons - agent only */}
+                        {isAgent && (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Button size="sm" variant="outline" onClick={() => handleEditItinerary(item)}>
+                              <Edit className="w-3.5 h-3.5 mr-1.5" /> Edit
+                            </Button>
+                            <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDeleteItinerary(item.id)}>
+                              <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Delete
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )})}
                 </div>

@@ -34,7 +34,7 @@
    - **Date:** `12 April 2026`
    - **Location:** `Taj Lake Palace, Pichola Lake, Udaipur, Rajasthan`
    - **Client name:** `Verma Family`
-   - **Invite message:** `Dear {name}, you are cordially invited to celebrate the wedding of Arjun & Sanjana. Join us for a magical celebration at the Lake Palace, Udaipur.`
+   - **Invite message:** `Dear {name}, you are cordially invited to celebrate the wedding of Rohit & Sanjana. Join us for a magical celebration at the Lake Palace, Udaipur.`
    - **Schedule:** `10 Apr — Welcome Mehendi · 11 Apr — Sangeet Night · 12 Apr — Wedding Ceremony · 13 Apr — Farewell Brunch`
 3. Click **Next** / Save
 4. Skip hotel and transport for now — agent will add these after the client sets up labels
