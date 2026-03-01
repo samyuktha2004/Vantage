@@ -93,6 +93,8 @@ export default function EventSetup() {
   const [isInviteUploading, setIsInviteUploading] = useState(false);
   const [scheduleText, setScheduleText] = useState("");
   const [inviteMessage, setInviteMessage] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
 
   // TBO vs Manual mode for hotel step
   const [hotelMode, setHotelMode] = useState<HotelMode>("tbo");
@@ -278,6 +280,8 @@ export default function EventSetup() {
         if (data.coverMediaType === "video") setInviteMediaType("video");
         if (data.scheduleText) setScheduleText(data.scheduleText);
         if (data.inviteMessage) setInviteMessage(data.inviteMessage);
+        if (data.contactPhone) setContactPhone(data.contactPhone);
+        if (data.contactEmail) setContactEmail(data.contactEmail);
       }
 
       if (travelRes.ok) {
@@ -421,6 +425,8 @@ export default function EventSetup() {
       }
       if (scheduleText.trim()) patchPayload.scheduleText = scheduleText.trim();
       if (inviteMessage.trim()) patchPayload.inviteMessage = inviteMessage.trim();
+      if (contactPhone.trim()) patchPayload.contactPhone = contactPhone.trim();
+      if (contactEmail.trim()) patchPayload.contactEmail = contactEmail.trim();
       if (Object.keys(patchPayload).length > 0) {
         await fetch(`/api/events/${id}`, {
           method: "PATCH",
@@ -726,6 +732,28 @@ export default function EventSetup() {
                     />
                     <p className="text-xs text-muted-foreground">
                       Paste or type the event schedule — guests see this in their portal
+                    </p>
+                  </div>
+
+                  {/* Guest concierge contact info */}
+                  <div className="space-y-3">
+                    <FormLabel>Guest Support Contact <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        placeholder="+91 98765 43210"
+                        value={contactPhone}
+                        onChange={(e) => setContactPhone(e.target.value)}
+                        type="tel"
+                      />
+                      <Input
+                        placeholder="support@yourcompany.com"
+                        value={contactEmail}
+                        onChange={(e) => setContactEmail(e.target.value)}
+                        type="email"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Shown on guests' Concierge page so they can reach your team directly.
                     </p>
                   </div>
 

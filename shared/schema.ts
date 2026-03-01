@@ -29,6 +29,9 @@ export const events = pgTable("events", {
   // Client-provided schedule / invite content
   scheduleText: text("schedule_text"), // Rich-text or plain schedule pasted by client
   inviteMessage: text("invite_message"), // Fallback personalised text invite when no media uploaded
+  // Contact info shown on guest Concierge page
+  contactPhone: text("contact_phone"), // e.g. "+91 98765 43210"
+  contactEmail: text("contact_email"), // e.g. "events@vantage.co"
 });
 
 // Client Details

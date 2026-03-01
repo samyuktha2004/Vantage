@@ -19,6 +19,7 @@ import {
   Hotel,
   ChevronDown,
   ChevronUp,
+  XCircle,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { format, differenceInCalendarDays } from "date-fns";
@@ -82,8 +83,9 @@ export default function GuestAddOns({ token }: { token: string }) {
   const usedBudget = guestData.usedBudget ?? 0;
   const remainingBudget = Math.max(0, addOnBudget - usedBudget);
 
-  // Existing approved requests (to avoid duplicates)
-  const approvedPerkIds = new Set<number>();
+  // Persisted requests from server (survive page reload)
+  const myRequests: Array<{ id: number; perkId: number | null; status: string; addonType: string | null }> =
+    guestData.myRequests ?? [];
 
   const handleRequestPerk = async (perk: Perk) => {
     const status = perkStatus[perk.id];
@@ -164,26 +166,56 @@ export default function GuestAddOns({ token }: { token: string }) {
   };
 
   const getPerkAction = (perk: Perk) => {
-    const status = perkStatus[perk.id] ?? "idle";
+    const sessionStatus = perkStatus[perk.id] ?? "idle";
 
-    if (status === "done") {
+    // In-session spinner (just submitted)
+    if (sessionStatus === "requesting") {
       return (
-        <Button size="sm" disabled className="bg-green-600 text-white hover:bg-green-600">
-          <Check className="w-3 h-3 mr-1" /> Done
+        <Button size="sm" disabled>
+          <Loader2 className="w-3 h-3 animate-spin mr-1" /> Sending…
         </Button>
       );
     }
 
+    // In-session confirmation (just submitted this session)
+    if (sessionStatus === "done") {
+      return (
+        <Badge className="bg-green-100 text-green-800 border border-green-200 px-2.5 py-1 text-xs font-medium">
+          <Check className="w-3 h-3 mr-1" /> Sent
+        </Badge>
+      );
+    }
+
+    // Persisted status from a previous session
+    const existing = myRequests.find((r) => r.perkId === perk.id);
+    if (existing) {
+      if (existing.status === "approved" || existing.status === "auto_approved") {
+        return (
+          <Badge className="bg-green-100 text-green-800 border border-green-200 px-2.5 py-1 text-xs font-medium">
+            <CheckCircle2 className="w-3 h-3 mr-1" /> Confirmed
+          </Badge>
+        );
+      }
+      if (existing.status === "rejected") {
+        return (
+          <Badge className="bg-red-100 text-red-800 border border-red-200 px-2.5 py-1 text-xs font-medium">
+            <XCircle className="w-3 h-3 mr-1" /> Not approved · contact coordinator
+          </Badge>
+        );
+      }
+      // pending / forwarded_to_client / any other status
+      return (
+        <Badge className="bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-1 text-xs font-medium">
+          <Clock className="w-3 h-3 mr-1" /> Under review
+        </Badge>
+      );
+    }
+
+    // No existing request — show action button
     if (perk.pricingType === "included" || perk.expenseHandledByClient) {
       return (
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => handleRequestPerk(perk)}
-          disabled={status === "requesting"}
-        >
-          {status === "requesting" ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CheckCircle2 className="w-3 h-3 mr-1" />}
-          Confirm
+        <Button size="sm" variant="secondary" onClick={() => handleRequestPerk(perk)}>
+          <CheckCircle2 className="w-3 h-3 mr-1" /> Confirm
         </Button>
       );
     }
@@ -196,9 +228,8 @@ export default function GuestAddOns({ token }: { token: string }) {
           size="sm"
           className={withinBudget ? "bg-amber-600 hover:bg-amber-700 text-white" : "bg-orange-600 hover:bg-orange-700 text-white"}
           onClick={() => handleRequestPerk(perk)}
-          disabled={status === "requesting"}
         >
-          {status === "requesting" ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Clock className="w-3 h-3 mr-1" />}
+          <Clock className="w-3 h-3 mr-1" />
           {withinBudget ? "Request" : "Send Request"}
         </Button>
       );
@@ -206,14 +237,8 @@ export default function GuestAddOns({ token }: { token: string }) {
 
     // self_pay
     return (
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => handleRequestPerk(perk)}
-        disabled={status === "requesting"}
-      >
-        {status === "requesting" ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CreditCard className="w-3 h-3 mr-1" />}
-        Contact Agent
+      <Button size="sm" variant="outline" onClick={() => handleRequestPerk(perk)}>
+        <CreditCard className="w-3 h-3 mr-1" /> Contact Agent
       </Button>
     );
   };
@@ -231,8 +256,17 @@ export default function GuestAddOns({ token }: { token: string }) {
         {perks.length > 0 ? (
           <div className="space-y-3">
             <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Available Perks</h2>
-            {perks.map((perk) => (
-              <Card key={perk.id} className={perkStatus[perk.id] === "done" ? "border-green-200 bg-green-50/50" : ""}>
+            {perks.map((perk) => {
+              const existing = myRequests.find((r) => r.perkId === perk.id);
+              const isApproved = perkStatus[perk.id] === "done"
+                || existing?.status === "approved"
+                || existing?.status === "auto_approved";
+              const isRejected = existing?.status === "rejected";
+              return (
+              <Card
+                key={perk.id}
+                className={isApproved ? "border-green-200 bg-green-50/50" : isRejected ? "border-red-200 bg-red-50/30" : ""}
+              >
                 <CardContent className="pt-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 space-y-1">
@@ -250,7 +284,8 @@ export default function GuestAddOns({ token }: { token: string }) {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <Card>

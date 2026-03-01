@@ -171,6 +171,7 @@ export function useUpdateProfile(token: string) {
       emergencyContactName?: string;
       emergencyContactPhone?: string;
       mealPreference?: string;
+      specialRequests?: string;
     }) => {
       const url = buildUrl(api.guests.portal.path.replace('/portal/:token', '/:token/profile'), { token });
       const res = await fetch(`/api/guest/${token}/profile`, {

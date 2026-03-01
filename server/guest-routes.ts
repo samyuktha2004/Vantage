@@ -165,6 +165,12 @@ guestRoutes.get('/api/guest/portal/:token', async (req, res) => {
       // name and description intentionally omitted
     } : null;
 
+    // Fetch guest's own requests (so Add-ons page can show status without refetching)
+    const myRequests = await db
+      .select({ id: guestRequests.id, perkId: guestRequests.perkId, status: guestRequests.status, addonType: guestRequests.addonType })
+      .from(guestRequests)
+      .where(eq(guestRequests.guestId, guest.id));
+
     res.json({
       ...guest,
       event,
@@ -186,6 +192,7 @@ guestRoutes.get('/api/guest/portal/:token', async (req, res) => {
       isHotelFull,
       primaryHotel,
       hotelOptions,
+      myRequests,
     });
     
   } catch (error) {
@@ -796,7 +803,7 @@ guestRoutes.post('/api/guest/:token/request', async (req, res) => {
 guestRoutes.put('/api/guest/:token/profile', async (req, res) => {
   try {
     const { token } = req.params;
-    const { emergencyContactName, emergencyContactPhone, mealPreference } = req.body;
+    const { emergencyContactName, emergencyContactPhone, mealPreference, specialRequests } = req.body;
 
     const guest = await getGuestByToken(token);
 
@@ -804,6 +811,7 @@ guestRoutes.put('/api/guest/:token/profile', async (req, res) => {
     if (emergencyContactName !== undefined) updates.emergencyContactName = emergencyContactName;
     if (emergencyContactPhone !== undefined) updates.emergencyContactPhone = emergencyContactPhone;
     if (mealPreference !== undefined) updates.mealPreference = mealPreference;
+    if (specialRequests !== undefined) updates.specialRequests = specialRequests;
 
     const [updatedGuest] = await db
       .update(guests)

@@ -103,26 +103,34 @@ export default function GuestConcierge({ token }: { token: string }) {
         <div className="bg-primary/5 rounded-2xl p-8 text-center mt-12 border border-primary/10">
           <h3 className="font-serif text-xl text-primary mb-2">Need something else?</h3>
           <p className="text-muted-foreground text-sm mb-6">Our dedicated team is here to assist with special arrangements.</p>
-          <div className="flex justify-center gap-4">
-            <Button
-              variant="outline"
-              className="gap-2 bg-white"
-              onClick={() => {
-                window.location.href = `mailto:support@vantage.co?subject=${encodeURIComponent("Concierge support request — " + (guestData.event?.name ?? "event"))}`;
-              }}
-            >
-              <Mail className="w-4 h-4" /> Email Concierge
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2 bg-white"
-              onClick={() => {
-                window.location.href = "tel:+91-9999999999";
-              }}
-            >
-              <Phone className="w-4 h-4" /> Call Support
-            </Button>
-          </div>
+          {guestData.event?.contactEmail || guestData.event?.contactPhone ? (
+            <div className="flex justify-center gap-4 flex-wrap">
+              {guestData.event?.contactEmail && (
+                <Button
+                  variant="outline"
+                  className="gap-2 bg-white"
+                  onClick={() => {
+                    window.location.href = `mailto:${guestData.event.contactEmail}?subject=${encodeURIComponent("Concierge support request — " + (guestData.event?.name ?? "event"))}`;
+                  }}
+                >
+                  <Mail className="w-4 h-4" /> Email Concierge
+                </Button>
+              )}
+              {guestData.event?.contactPhone && (
+                <Button
+                  variant="outline"
+                  className="gap-2 bg-white"
+                  onClick={() => {
+                    window.location.href = `tel:${guestData.event.contactPhone}`;
+                  }}
+                >
+                  <Phone className="w-4 h-4" /> Call Support
+                </Button>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Contact details will be shared closer to the event.</p>
+          )}
         </div>
 
         {/* Continue to Next Step */}

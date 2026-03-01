@@ -1306,6 +1306,14 @@ export default function EventDetails() {
                         {selfPaidLabel}
                       </span>
                     ))}
+                    {guest.selectedHotelBookingId && (() => {
+                      const hb = (hotelBookings || []).find((b: any) => b.id === guest.selectedHotelBookingId);
+                      return hb ? (
+                        <span className="inline-block mt-1 ml-2 px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700">
+                          🏨 {hb.hotelName}
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
                   <div className="flex items-center gap-2">
                     <GuestLinkManager guest={guest} />

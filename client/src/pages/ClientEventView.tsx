@@ -25,7 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Loader2, Calendar, MapPin, Users, DollarSign, Tag, Inbox, Clock, Plus, Upload, FileSpreadsheet, CheckCircle, XCircle, Plane, Train, Bus, Car, Ship, Building2, UserCheck, UserX, HelpCircle, Gift } from "lucide-react";
-import { format } from "date-fns";
+import { format, differenceInCalendarDays } from "date-fns";
 import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { parseExcelFile, parseCSVFile } from "@/lib/excelParser";
@@ -565,7 +565,7 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
                           <div>
                             <p className="text-sm font-medium">{g.name}</p>
                             <p className="text-xs text-muted-foreground">{g.email ?? g.phone ?? g.bookingRef}</p>
-                            <div className="flex gap-2 mt-1">
+                            <div className="flex gap-2 mt-1 flex-wrap">
                               <Badge className="text-xs">{g.registrationSource ?? 'invited'}</Badge>
                               <Badge className="text-xs">Seats: {g.confirmedSeats ?? 0}/{g.allocatedSeats ?? 1}</Badge>
                               {g.mealPreference && <Badge className="text-xs">{g.mealPreference}</Badge>}
@@ -574,6 +574,14 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
                                   {selfPaidLabel}
                                 </Badge>
                               ))}
+                              {g.selectedHotelBookingId && (() => {
+                                const hb = (hotelBookings || []).find((b: any) => b.id === g.selectedHotelBookingId);
+                                return hb ? (
+                                  <Badge className="text-xs bg-purple-100 text-purple-700 hover:bg-purple-100">
+                                    🏨 {hb.hotelName}
+                                  </Badge>
+                                ) : null;
+                              })()}
                             </div>
                           </div>
 
@@ -786,12 +794,18 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
               {(guests as any[]).map((guest) => {
                 const isConfirmed = guest.status === "confirmed";
                 const isDeclined = guest.status === "declined";
+                const guestHotel = guest.selectedHotelBookingId
+                  ? (hotelBookings || []).find((b: any) => b.id === guest.selectedHotelBookingId)
+                  : null;
                 return (
                   <div key={guest.id} className="flex items-center justify-between px-5 py-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{guest.name}</p>
                       {guest.category && (
                         <p className="text-xs text-muted-foreground">{guest.category}</p>
+                      )}
+                      {guestHotel && (
+                        <p className="text-xs text-purple-600 mt-0.5">🏨 {guestHotel.hotelName}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0 ml-4">
@@ -983,8 +997,8 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
               Budget Overview
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid md:grid-cols-2 gap-4 mb-4">
+          <CardContent className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4">
               <div className="bg-primary/5 rounded-lg p-4">
                 <p className="text-sm text-muted-foreground">Total Add-on Budget Allocated</p>
                 <p className="text-2xl font-bold text-primary mt-1">₹{costBreakdown.totalAddOnBudgetAllocated.toLocaleString()}</p>
@@ -1009,6 +1023,50 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
                 ))}
               </div>
             )}
+            {/* Estimated total across hotels, travel, and add-ons */}
+            {(() => {
+              const hotelTotal = (hotelBookings || []).reduce((sum: number, b: any) => {
+                const rate = b.clientFacingRate ?? b.totalCost ?? 0;
+                const nights = b.checkInDate && b.checkOutDate
+                  ? Math.max(1, differenceInCalendarDays(new Date(b.checkOutDate), new Date(b.checkInDate)))
+                  : 1;
+                return sum + rate * (b.numberOfRooms ?? 1) * nights;
+              }, 0);
+              const flightTotal = (travelOptions || []).reduce((sum: number, t: any) => {
+                return sum + (t.clientFacingFare ?? t.fare ?? 0);
+              }, 0);
+              const addOnTotal = costBreakdown.totalAddOnBudgetUsed ?? 0;
+              const grandTotal = hotelTotal + flightTotal + addOnTotal;
+              if (grandTotal === 0) return null;
+              return (
+                <div className="border-t pt-4 space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Estimated Event Cost</p>
+                  {hotelTotal > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Hotels</span>
+                      <span>₹{hotelTotal.toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
+                  {flightTotal > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Transport</span>
+                      <span>₹{flightTotal.toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
+                  {addOnTotal > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Add-ons</span>
+                      <span>₹{addOnTotal.toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm font-semibold border-t pt-2">
+                    <span>Estimated Total</span>
+                    <span className="text-primary">₹{grandTotal.toLocaleString('en-IN')}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">* Hotel cost = client rate × rooms × nights. Transport = sum of client fares per option. Actual invoiced amounts may vary.</p>
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
       )}

@@ -39,6 +39,7 @@ import {
   UserX,
   LayoutDashboard,
   LogOut,
+  Building2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -167,6 +168,17 @@ export default function CheckInDashboard() {
     queryFn: () => fetchEvent(eventId),
     enabled: !!eventId,
     staleTime: 60000,
+  });
+
+  const { data: hotelBookings = [] } = useQuery({
+    queryKey: ["ground-hotel-bookings", eventId],
+    queryFn: async () => {
+      const res = await fetch(`/api/events/${eventId}/hotel-bookings`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!eventId,
+    staleTime: 120000,
   });
 
   const arrivedMutation = useMutation({
@@ -458,6 +470,36 @@ export default function CheckInDashboard() {
         </Card>
       </div>
 
+      {/* Meal summary bar */}
+      {(guests as any[]).length > 0 && (() => {
+        const mealCounts: Record<string, number> = {};
+        for (const g of guests as any[]) {
+          const pref = g.mealPreference ?? "standard";
+          mealCounts[pref] = (mealCounts[pref] ?? 0) + 1;
+        }
+        const order = ["standard", "vegetarian", "vegan", "halal", "kosher"];
+        const sorted = [
+          ...order.filter((k) => mealCounts[k]),
+          ...Object.keys(mealCounts).filter((k) => !order.includes(k)),
+        ];
+        return (
+          <div className="max-w-lg mx-auto px-4 mt-3">
+            <Card>
+              <CardContent className="py-3 px-4">
+                <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                  <Utensils className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  {sorted.map((pref) => (
+                    <span key={pref} className="px-2 py-0.5 rounded-full bg-muted capitalize font-medium">
+                      {pref} {mealCounts[pref]}
+                    </span>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
+
       {/* QR Scanner Overlay */}
       {showQrScanner && (
         <div className="fixed inset-0 z-50 bg-black/80 flex flex-col items-center justify-center p-4">
@@ -648,6 +690,15 @@ export default function CheckInDashboard() {
                           )}
                         </span>
                       )}
+                      {guest.selectedHotelBookingId && (() => {
+                        const hb = (hotelBookings as any[]).find((b: any) => b.id === guest.selectedHotelBookingId);
+                        return hb ? (
+                          <span className="flex items-center gap-1">
+                            <Building2 className="w-3 h-3" />
+                            {hb.hotelName}
+                          </span>
+                        ) : null;
+                      })()}
                       {guest.specialRequests && (
                         <span className="flex items-center gap-1">
                           <StickyNote className="w-3 h-3" />

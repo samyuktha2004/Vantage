@@ -34,11 +34,13 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
   const [arrivalMode, setArrivalMode] = useState<TransportMode>("group_flight");
   const [originCity, setOriginCity] = useState("");
   const [needsArrivalPickup, setNeedsArrivalPickup] = useState(false);
+  const [arrivalTransportRef, setArrivalTransportRef] = useState(""); // flight/train number for pickup coordination
   const [arrivalNotes, setArrivalNotes] = useState("");
 
   // Departure
   const [departureMode, setDepartureMode] = useState<TransportMode>("group_flight");
   const [needsDepartureDropoff, setNeedsDepartureDropoff] = useState(false);
+  const [departureTransportRef, setDepartureTransportRef] = useState(""); // flight/train number for drop-off coordination
   const [departureNotes, setDepartureNotes] = useState("");
 
   // Note for the event team
@@ -125,6 +127,9 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
         arrivalMode,
         departureMode,
         originCity: (arrivalMode === "group_flight" || arrivalMode === "own_flight" || arrivalMode === "train") ? (originCity || undefined) : undefined,
+        // Only collect transport reference when guest requests pickup — avoids unnecessary data collection
+        arrivalPnr: (needsArrivalPickup && arrivalTransportRef) ? arrivalTransportRef : undefined,
+        departurePnr: (needsDepartureDropoff && departureTransportRef) ? departureTransportRef : undefined,
         journeyNotes: journeyNotes || undefined,
         specialRequests: agentNote || undefined,
       });
@@ -169,6 +174,8 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
     needsPickup,
     onNeedsPickupChange,
     pickupLabel,
+    transportRef,
+    onTransportRefChange,
     notes,
     onNotesChange,
     city,
@@ -183,12 +190,17 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
     needsPickup: boolean;
     onNeedsPickupChange: (v: boolean) => void;
     pickupLabel: string;
+    transportRef: string;
+    onTransportRefChange: (v: string) => void;
     notes: string;
     onNotesChange: (v: string) => void;
     city?: string;
     onCityChange?: (v: string) => void;
     showCity?: boolean;
   }) {
+    const transportRefLabel = value === "train" ? "Train number (e.g. 12301)" : "Flight number (e.g. 6E-401)";
+    const transportRefPlaceholder = value === "train" ? "e.g. 12301" : "e.g. 6E-401";
+
     return (
       <>
         <RadioGroup
@@ -225,7 +237,7 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
               onChange={(e) => onCityChange(e.target.value)}
               className="max-w-xs"
             />
-            <p className="text-xs text-muted-foreground">Helps the team coordinate</p>
+            <p className="text-xs text-muted-foreground">Helps the team coordinate pickup groups</p>
           </div>
         )}
 
@@ -242,6 +254,18 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
               />
               <span className="text-sm">{pickupLabel}</span>
             </label>
+            {/* Show transport number only if pickup is requested — to help coordinate timing */}
+            {needsPickup && (value === "own_flight" || value === "train") && (
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">{transportRefLabel} (optional — helps us time your pickup)</Label>
+                <Input
+                  placeholder={transportRefPlaceholder}
+                  value={transportRef}
+                  onChange={(e) => onTransportRefChange(e.target.value)}
+                  className="max-w-xs text-sm"
+                />
+              </div>
+            )}
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Other notes (optional)</Label>
               <Textarea
@@ -290,6 +314,8 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
               needsPickup={needsArrivalPickup}
               onNeedsPickupChange={setNeedsArrivalPickup}
               pickupLabel="I'd like a pickup from the airport / station"
+              transportRef={arrivalTransportRef}
+              onTransportRefChange={setArrivalTransportRef}
               notes={arrivalNotes}
               onNotesChange={setArrivalNotes}
               city={originCity}
@@ -322,6 +348,8 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
               needsPickup={needsDepartureDropoff}
               onNeedsPickupChange={setNeedsDepartureDropoff}
               pickupLabel="I'd like a drop-off to the airport / station"
+              transportRef={departureTransportRef}
+              onTransportRefChange={setDepartureTransportRef}
               notes={departureNotes}
               onNotesChange={setDepartureNotes}
               showCity={false}

@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Users, Plus, X, CheckCircle2, XCircle, Phone, UtensilsCrossed } from "lucide-react";
+import { Loader2, Users, Plus, X, CheckCircle2, XCircle, Phone, UtensilsCrossed, AlertCircle } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -75,10 +76,11 @@ export default function GuestRSVP({ token }: { token: string }) {
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [newMember, setNewMember] = useState<FamilyMember>({ name: "", relationship: "", age: undefined });
 
-  // Emergency contact + meal preference
+  // Emergency contact + meal preference + allergies
   const [emergencyName, setEmergencyName] = useState("");
   const [emergencyPhone, setEmergencyPhone] = useState("");
   const [mealPref, setMealPref] = useState("standard");
+  const [allergyNotes, setAllergyNotes] = useState("");
 
   if (isLoading) {
     return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin text-primary w-8 h-8" /></div>;
@@ -122,8 +124,13 @@ export default function GuestRSVP({ token }: { token: string }) {
       setSubmitted(true);
 
       // Save profile data in background (non-blocking)
-      if (status === 'confirmed' && (emergencyName || emergencyPhone || mealPref !== "standard")) {
-        updateProfile.mutate({ emergencyContactName: emergencyName, emergencyContactPhone: emergencyPhone, mealPreference: mealPref });
+      if (status === 'confirmed' && (emergencyName || emergencyPhone || mealPref !== "standard" || allergyNotes)) {
+        updateProfile.mutate({
+          emergencyContactName: emergencyName,
+          emergencyContactPhone: emergencyPhone,
+          mealPreference: mealPref,
+          specialRequests: allergyNotes || undefined,
+        });
       }
 
       if (status === 'confirmed') {
@@ -454,6 +461,20 @@ export default function GuestRSVP({ token }: { token: string }) {
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="flex items-center gap-1.5 text-sm">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                      Allergies or dietary restrictions (optional)
+                    </Label>
+                    <Textarea
+                      placeholder="e.g., nut allergy, gluten-free, no shellfish…"
+                      value={allergyNotes}
+                      onChange={(e) => setAllergyNotes(e.target.value)}
+                      rows={2}
+                      className="max-w-sm text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground">Shared with the catering team to keep you safe</p>
                   </div>
                 </CardContent>
               </Card>
