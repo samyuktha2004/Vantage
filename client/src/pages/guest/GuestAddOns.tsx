@@ -160,9 +160,9 @@ export default function GuestAddOns({ token }: { token: string }) {
     }
     // requestable
     if (effectiveRate <= remainingBudget) {
-      return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">₹{effectiveRate.toLocaleString("en-IN")} · Auto-approved</Badge>;
+      return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">₹{effectiveRate.toLocaleString("en-IN")} · Confirmed</Badge>;
     }
-    return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100 text-xs">₹{effectiveRate.toLocaleString("en-IN")} · Needs host approval</Badge>;
+    return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100 text-xs">₹{effectiveRate.toLocaleString("en-IN")} · Under review</Badge>;
   };
 
   const getPerkAction = (perk: Perk) => {
@@ -199,7 +199,7 @@ export default function GuestAddOns({ token }: { token: string }) {
       if (existing.status === "rejected") {
         return (
           <Badge className="bg-red-100 text-red-800 border border-red-200 px-2.5 py-1 text-xs font-medium">
-            <XCircle className="w-3 h-3 mr-1" /> Not approved · contact coordinator
+            <XCircle className="w-3 h-3 mr-1" /> Not available — contact event team
           </Badge>
         );
       }

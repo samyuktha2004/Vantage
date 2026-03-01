@@ -1243,7 +1243,7 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
         </h3>
         {pendingRequests.length === 0 ? (
           <div className="text-center py-10 border-2 border-dashed rounded-xl text-muted-foreground text-sm">
-            No requests awaiting approval
+            No requests pending for your review
           </div>
         ) : (
           <div className="space-y-3">

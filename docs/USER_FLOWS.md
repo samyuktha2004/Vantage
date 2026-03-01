@@ -202,7 +202,7 @@ Guest List Tab (read-only for client, filtered):
   → Can see: name, RSVP status, dietary restrictions
   ↓
 Requests Tab:
-  → Forwarded requests appear here for client approval
+  → Forwarded requests appear here while we check availability
   → Client can approve or reject with budget rationale
   ↓
 Reports Tab:

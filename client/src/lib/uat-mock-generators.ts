@@ -213,8 +213,12 @@ export function generateMockHotelsForCity(cityCode: string): HotelResult[] {
   ];
 }
 
-export function isMockFlightResult(resultIndex: string): boolean {
-  return resultIndex.startsWith("MOCK_");
+export function isMockFlightResult(resultIndex?: unknown): boolean {
+  try {
+    return String(resultIndex ?? "").startsWith("MOCK_");
+  } catch {
+    return false;
+  }
 }
 
 export function isMockHotelSelection(bookingCode?: string, hotelCode?: string): boolean {

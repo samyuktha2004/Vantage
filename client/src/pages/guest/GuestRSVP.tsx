@@ -396,7 +396,7 @@ export default function GuestRSVP({ token }: { token: string }) {
                         className="border-amber-400 text-amber-800 hover:bg-amber-100"
                         onClick={() => {
                           // Add a placeholder entry that becomes a pending request on submit
-                          setFamilyMembers([...familyMembers, { name: "", relationship: "Additional Guest (pending approval)", age: undefined }]);
+                          setFamilyMembers([...familyMembers, { name: "", relationship: "Additional Guest (under review)", age: undefined }]);
                         }}
                       >
                         <Plus className="w-3 h-3 mr-1" /> Request an Extra Seat

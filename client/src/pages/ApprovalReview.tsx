@@ -81,7 +81,7 @@ export default function ApprovalReview() {
   const handleForwardToClient = async (request: any) => {
     try {
       await updateRequest.mutateAsync({ id: request.id, status: "forwarded_to_client", eventId });
-      toast({ title: "Forwarded to Client", description: `${request.guest?.name}'s request sent to client for approval` });
+      toast({ title: "Request forwarded", description: `${request.guest?.name}'s request has been forwarded for review.` });
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
@@ -277,7 +277,7 @@ export default function ApprovalReview() {
                             disabled={updateRequest.isPending}
                           >
                             <Send className="w-4 h-4 mr-1" />
-                            Forward to Client
+                            Forward for review
                           </Button>
                           <Button
                             size="sm"
@@ -309,7 +309,7 @@ export default function ApprovalReview() {
         {/* Forwarded to Client Section */}
         {forwardedRequests.length > 0 && (
           <div className="space-y-4">
-            <h2 className="text-2xl font-serif text-primary">Awaiting Client Approval</h2>
+            <h2 className="text-2xl font-serif text-primary">Requests Requiring Your Approval</h2>
             <div className="space-y-3">
               {forwardedRequests.map((request: any) => (
                 <Card key={request.id} className="border-blue-200 bg-blue-50/50">
@@ -317,7 +317,7 @@ export default function ApprovalReview() {
                     <div className="flex items-center gap-3 flex-wrap">
                       <Send className="w-5 h-5 text-blue-600" />
                       <CardTitle className="text-base">{request.guest?.name || 'Unknown Guest'}</CardTitle>
-                      <Badge className="bg-blue-600">Forwarded to Client</Badge>
+                      <Badge className="bg-blue-600">Forwarded for review</Badge>
                       {request.addonType && (
                         <Badge variant="secondary" className="text-xs capitalize">
                           {request.addonType.replace(/_/g, ' ')}

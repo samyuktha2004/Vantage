@@ -361,7 +361,7 @@ export async function registerRoutes(
         }
       }
 
-      const { coverMediaUrl, coverMediaType, themeColor, themePreset, scheduleText, inviteMessage } = req.body;
+      const { coverMediaUrl, coverMediaType, themeColor, themePreset, scheduleText, inviteMessage, contactPhone, contactEmail } = req.body;
       const updates: Record<string, any> = {};
       if (coverMediaUrl !== undefined) {
         const url = (coverMediaUrl || "").trim();
@@ -386,6 +386,8 @@ export async function registerRoutes(
       if (inviteMessage !== undefined) {
         updates.inviteMessage = inviteMessage ? stripHtml(String(inviteMessage)).slice(0, 2000) : null;
       }
+      if (contactPhone !== undefined) updates.contactPhone = contactPhone ? String(contactPhone).slice(0, 50) : null;
+      if (contactEmail !== undefined) updates.contactEmail = contactEmail ? String(contactEmail).slice(0, 200) : null;
 
       const [updated] = await db.update(events).set(updates).where(eq(events.id, eventId)).returning();
       if (!updated) return res.status(404).json({ message: "Event not found" });
