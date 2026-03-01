@@ -176,6 +176,7 @@ export default function Dashboard() {
       const response = await fetch("/api/user/event-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ eventCode: data.eventCode.trim() }),
       });
 
@@ -259,8 +260,10 @@ export default function Dashboard() {
                 )}
               />
               <div className="flex justify-end pt-4">
-                <Button type="submit" className="bg-primary text-white">
-                  Submit
+                <Button type="submit" disabled={eventCodeForm.formState.isSubmitting} className="bg-primary text-white">
+                  {eventCodeForm.formState.isSubmitting ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Joining…</>
+                  ) : "Submit"}
                 </Button>
               </div>
             </form>
@@ -487,7 +490,7 @@ export default function Dashboard() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1 gap-1 text-xs h-8"
+                        className="flex-none sm:flex-1 gap-1 text-xs h-8"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -500,7 +503,7 @@ export default function Dashboard() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1 gap-1 text-xs h-8"
+                        className="flex-none sm:flex-1 gap-1 text-xs h-8"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -513,7 +516,7 @@ export default function Dashboard() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1 gap-1 text-xs h-8"
+                        className="flex-none sm:flex-1 gap-1 text-xs h-8"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -536,32 +539,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      <AlertDialog open={!!deleteEventId} onOpenChange={() => setDeleteEventId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Event</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this event? This action cannot be undone and will remove all associated data including guests, labels, and perks.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleDeleteEvent}
-              className="bg-destructive hover:bg-destructive/90"
-            >
-              {deleteEvent.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                "Delete Event"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </DashboardLayout>
   );
 }

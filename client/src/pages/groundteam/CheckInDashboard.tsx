@@ -83,6 +83,12 @@ async function fetchGuests(eventId: string) {
   return res.json();
 }
 
+async function fetchItinerary(eventId: string) {
+  const res = await fetch(`/api/events/${eventId}/itinerary`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to load itinerary");
+  return res.json();
+}
+
 async function markArrived(guestId: number) {
   const res = await fetch(`/api/groundteam/checkin/${guestId}`, {
     method: "POST",
@@ -125,6 +131,13 @@ export default function CheckInDashboard() {
     queryFn: () => fetchGuests(eventId),
     enabled: !!eventId,
     refetchInterval: autoRefresh ? 30000 : false,
+  });
+
+  const { data: itinerary = [] } = useQuery({
+    queryKey: ["ground-itinerary", eventId],
+    queryFn: () => fetchItinerary(eventId),
+    enabled: !!eventId,
+    refetchInterval: autoRefresh ? 60000 : false,
   });
 
   const arrivedMutation = useMutation({
@@ -357,6 +370,37 @@ export default function CheckInDashboard() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="max-w-lg mx-auto px-4 mt-4">
+        <Card>
+          <CardContent className="pt-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">Upcoming Itinerary</p>
+              <p className="text-xs text-muted-foreground">{itinerary.length} total</p>
+            </div>
+            {itinerary.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No itinerary events configured yet.</p>
+            ) : (
+              [...(itinerary as any[])]
+                .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+                .slice(0, 3)
+                .map((item: any) => (
+                  <div key={item.id} className="rounded border px-2.5 py-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-medium">{item.title}</p>
+                      {item.isMandatory && (
+                        <Badge className="bg-primary/10 text-primary border border-primary/20">Mandatory</Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(item.startTime).toLocaleString()} → {new Date(item.endTime).toLocaleString()}
+                    </p>
+                  </div>
+                ))
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* QR Scanner Overlay */}

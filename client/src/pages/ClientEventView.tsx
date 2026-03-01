@@ -59,6 +59,16 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
     refetchInterval: 30000,
   });
 
+  const { data: itineraryEvents = [] } = useQuery({
+    queryKey: ["event-itinerary", eventId],
+    queryFn: async () => {
+      const res = await fetch(`/api/events/${eventId}/itinerary`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load itinerary");
+      return res.json();
+    },
+    enabled: !!eventId,
+  });
+
   // Cost breakdown
   const { data: costBreakdown } = useQuery({
     queryKey: ["cost-breakdown", eventId],
@@ -425,6 +435,35 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
                 </div>
               </div>
             ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {itineraryEvents.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Calendar className="w-4 h-4" />
+              Itinerary
+            </CardTitle>
+            <CardDescription>Read-only schedule managed by your agent</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {[...itineraryEvents]
+              .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+              .slice(0, 8)
+              .map((item: any) => (
+                <div key={item.id} className="rounded-lg bg-muted/40 p-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-medium">{item.title}</p>
+                    {item.isMandatory && <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Mandatory</Badge>}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {format(new Date(item.startTime), "PPP p")} → {format(new Date(item.endTime), "PPP p")}
+                  </p>
+                  {item.location && <p className="text-xs text-muted-foreground">{item.location}</p>}
+                </div>
+              ))}
           </CardContent>
         </Card>
       )}

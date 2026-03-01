@@ -46,6 +46,15 @@ function hotelHeaders() {
   };
 }
 
+// TBO B2B Hotel API requires ClientId + EndUserIp in every POST body
+function getCredentialBody() {
+  const username = process.env.TBO_HOTEL_USERNAME ?? "";
+  return {
+    ClientId: username,
+    EndUserIp: "127.0.0.1",
+  };
+}
+
 async function parseJsonSafe(res: Response): Promise<any> {
   const text = await res.text();
   if (!text) return {};
@@ -65,7 +74,7 @@ async function tboHotelFetchOnce<T>(
   const res = await fetch(url, {
     method,
     headers: hotelHeaders(),
-    body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,
+    body: method === "POST" ? JSON.stringify({ ...getCredentialBody(), ...(body ?? {}) }) : undefined,
   });
 
   const data = await parseJsonSafe(res);

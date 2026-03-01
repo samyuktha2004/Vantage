@@ -117,9 +117,30 @@ export default function EventDetails() {
   });
   
   const [isSeedingItinerary, setIsSeedingItinerary] = useState(false);
+  const [isSavingItinerary, setIsSavingItinerary] = useState(false);
+  const [editingItineraryId, setEditingItineraryId] = useState<number | null>(null);
+  const [itineraryForm, setItineraryForm] = useState({
+    title: "",
+    description: "",
+    startTime: "",
+    endTime: "",
+    location: "",
+    capacity: "",
+    isMandatory: false,
+  });
 
   // Publish state
   const [isPublishing, setIsPublishing] = useState(false);
+
+  const { data: itineraryEventsData = [], refetch: refetchItinerary } = useQuery({
+    queryKey: ["itinerary-events", id],
+    queryFn: async () => {
+      const res = await fetch(`/api/events/${id}/itinerary`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load itinerary");
+      return res.json();
+    },
+    enabled: !!id,
+  });
 
   // Microsite appearance state
   const THEME_PRESETS: { value: string; label: string; color: string }[] = [
@@ -237,6 +258,7 @@ export default function EventDetails() {
         await fetch(`/api/events/${id}/guests`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             eventId: id,
             name: guest.name,
@@ -276,6 +298,7 @@ export default function EventDetails() {
       const response = await fetch(`/api/events/${id}/labels`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ eventId: id, name: newLabelName, addOnBudget: newLabelBudget }),
       });
 
@@ -302,6 +325,7 @@ export default function EventDetails() {
       const response = await fetch(`/api/events/${id}/perks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ eventId: id, ...newPerkData }),
       });
 
@@ -363,6 +387,7 @@ export default function EventDetails() {
       const response = await fetch(`/api/events/${id}/guests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           eventId: id,
           name: newGuestData.name,
@@ -410,6 +435,8 @@ export default function EventDetails() {
     try {
       const response = await fetch(`/api/events/${id}/seed-itinerary`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
       });
 
       if (!response.ok) throw new Error('Failed to seed itinerary');
@@ -419,7 +446,6 @@ export default function EventDetails() {
       toast({ 
         title: "Itinerary seeded!", 
         description: `Added ${result.count} sample events with deliberate conflicts for testing`,
-        duration: 5000,
       });
     } catch (error: any) {
       toast({ 
@@ -429,6 +455,98 @@ export default function EventDetails() {
       });
     } finally {
       setIsSeedingItinerary(false);
+    }
+  };
+
+  const resetItineraryForm = () => {
+    setEditingItineraryId(null);
+    setItineraryForm({
+      title: "",
+      description: "",
+      startTime: "",
+      endTime: "",
+      location: "",
+      capacity: "",
+      isMandatory: false,
+    });
+  };
+
+  const handleEditItinerary = (item: any) => {
+    setEditingItineraryId(item.id);
+    setItineraryForm({
+      title: item.title ?? "",
+      description: item.description ?? "",
+      startTime: item.startTime ? format(new Date(item.startTime), "yyyy-MM-dd'T'HH:mm") : "",
+      endTime: item.endTime ? format(new Date(item.endTime), "yyyy-MM-dd'T'HH:mm") : "",
+      location: item.location ?? "",
+      capacity: item.capacity ? String(item.capacity) : "",
+      isMandatory: !!item.isMandatory,
+    });
+  };
+
+  const handleSaveItinerary = async () => {
+    if (!itineraryForm.title || !itineraryForm.startTime || !itineraryForm.endTime) {
+      toast({ title: "Missing fields", description: "Title, start time and end time are required.", variant: "destructive" });
+      return;
+    }
+
+    if (new Date(itineraryForm.endTime) <= new Date(itineraryForm.startTime)) {
+      toast({ title: "Invalid time range", description: "End time must be after start time.", variant: "destructive" });
+      return;
+    }
+
+    setIsSavingItinerary(true);
+    try {
+      const url = editingItineraryId
+        ? `/api/events/${id}/itinerary/${editingItineraryId}`
+        : `/api/events/${id}/itinerary`;
+      const method = editingItineraryId ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          title: itineraryForm.title,
+          description: itineraryForm.description || null,
+          startTime: itineraryForm.startTime,
+          endTime: itineraryForm.endTime,
+          location: itineraryForm.location || null,
+          capacity: itineraryForm.capacity ? Number(itineraryForm.capacity) : null,
+          isMandatory: itineraryForm.isMandatory,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Failed to save itinerary event" }));
+        throw new Error(err.message || "Failed to save itinerary event");
+      }
+
+      toast({ title: editingItineraryId ? "Itinerary event updated" : "Itinerary event created" });
+      resetItineraryForm();
+      await refetchItinerary();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSavingItinerary(false);
+    }
+  };
+
+  const handleDeleteItinerary = async (itemId: number) => {
+    try {
+      const res = await fetch(`/api/events/${id}/itinerary/${itemId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Failed to delete itinerary event" }));
+        throw new Error(err.message || "Failed to delete itinerary event");
+      }
+      toast({ title: "Itinerary event deleted" });
+      if (editingItineraryId === itemId) resetItineraryForm();
+      await refetchItinerary();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     }
   };
 
@@ -472,6 +590,7 @@ export default function EventDetails() {
       const response = await fetch(`/api/labels/${labelId}/perks/${perkId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ isEnabled, expenseHandledByClient: false }),
       });
 
@@ -500,38 +619,42 @@ export default function EventDetails() {
     <DashboardLayout>
       {/* Header */}
       <div className="mb-8">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/50 pb-6">
-          <div>
-            <div className="text-sm text-accent-foreground/80 font-medium mb-1 uppercase tracking-wider">Event Dashboard</div>
-            <h1 className="text-4xl font-serif text-primary mb-2">{event.name}</h1>
-            <div className="flex gap-4 text-sm text-muted-foreground">
-              <span>{format(new Date(event.date), "PPP p")}</span>
-              <span>•</span>
-              <span>{event.location}</span>
+        <div className="border-b border-border/50 pb-6">
+          <div className="mb-4 flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+            <div>
+              <div className="text-sm text-accent-foreground/80 font-medium mb-1 uppercase tracking-wider">Event Dashboard</div>
+              <h1 className="text-4xl font-serif text-primary mb-2">{event.name}</h1>
+              <div className="flex gap-4 text-sm text-muted-foreground">
+                <span>{format(new Date(event.date), "PPP p")}</span>
+                <span>•</span>
+                <span>{event.location}</span>
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground">Event Code:</span>
+                <code className="text-sm font-mono font-bold bg-primary/10 text-primary px-3 py-1 rounded-md border border-primary/20">
+                  {event.eventCode}
+                </code>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => {
+                    navigator.clipboard.writeText(event.eventCode);
+                    toast({ title: "Copied!", description: "Event code copied to clipboard" });
+                  }}
+                >
+                  Copy
+                </Button>
+              </div>
             </div>
-            <div className="mt-3 flex items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">Event Code:</span>
-              <code className="text-sm font-mono font-bold bg-primary/10 text-primary px-3 py-1 rounded-md border border-primary/20">
-                {event.eventCode}
-              </code>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                onClick={() => {
-                  navigator.clipboard.writeText(event.eventCode);
-                  toast({ title: "Copied!", description: "Event code copied to clipboard" });
-                }}
-              >
-                Copy
-              </Button>
-            </div>
-          </div>
-          <div className="flex gap-2 items-end">
-            <div className="text-right hidden md:block mr-4">
+
+            <div className="text-left md:text-right md:mt-1">
               <div className="text-2xl font-serif font-bold text-primary">{guests?.length || 0}</div>
               <div className="text-xs text-muted-foreground uppercase">Guests</div>
             </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 items-center">
             <Button
               variant="outline"
               size="sm"
@@ -569,6 +692,7 @@ export default function EventDetails() {
               <Edit className="w-4 h-4" />
               Edit Setup
             </Button>
+
             <Button
               size="sm"
               onClick={() => navigate(`/events/${id}/preview`)}
@@ -790,6 +914,7 @@ export default function EventDetails() {
           <TabsTrigger value="guests" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white">Guests</TabsTrigger>
           <TabsTrigger value="labels" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white">Labels & Permissions</TabsTrigger>
           <TabsTrigger value="perks" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white">Perks & Add-ons</TabsTrigger>
+          <TabsTrigger value="itinerary" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white">Itinerary</TabsTrigger>
           <TabsTrigger value="requests" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white">Requests</TabsTrigger>
           <TabsTrigger value="inventory" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white">
             <BarChart3 className="w-3.5 h-3.5 mr-1.5" />Inventory
@@ -1343,6 +1468,132 @@ export default function EventDetails() {
               </div>
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="itinerary" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Manage Itinerary</CardTitle>
+              <CardDescription>
+                Create and edit the event schedule. Changes reflect in guest itinerary automatically.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid md:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Title *</Label>
+                  <Input
+                    value={itineraryForm.title}
+                    onChange={(e) => setItineraryForm({ ...itineraryForm, title: e.target.value })}
+                    placeholder="e.g. Welcome Dinner"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Location</Label>
+                  <Input
+                    value={itineraryForm.location}
+                    onChange={(e) => setItineraryForm({ ...itineraryForm, location: e.target.value })}
+                    placeholder="e.g. Grand Ballroom"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Start Time *</Label>
+                  <Input
+                    type="datetime-local"
+                    value={itineraryForm.startTime}
+                    onChange={(e) => setItineraryForm({ ...itineraryForm, startTime: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>End Time *</Label>
+                  <Input
+                    type="datetime-local"
+                    value={itineraryForm.endTime}
+                    onChange={(e) => setItineraryForm({ ...itineraryForm, endTime: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Capacity</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={itineraryForm.capacity}
+                    onChange={(e) => setItineraryForm({ ...itineraryForm, capacity: e.target.value })}
+                    placeholder="Optional"
+                  />
+                </div>
+                <div className="flex items-center gap-2 pt-7">
+                  <Checkbox
+                    id="itinerary-mandatory"
+                    checked={itineraryForm.isMandatory}
+                    onCheckedChange={(checked) => setItineraryForm({ ...itineraryForm, isMandatory: !!checked })}
+                  />
+                  <Label htmlFor="itinerary-mandatory">Mandatory event</Label>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Description</Label>
+                <Input
+                  value={itineraryForm.description}
+                  onChange={(e) => setItineraryForm({ ...itineraryForm, description: e.target.value })}
+                  placeholder="Optional details"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button onClick={handleSaveItinerary} disabled={isSavingItinerary}>
+                  {isSavingItinerary ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  {editingItineraryId ? "Update Event" : "Add Event"}
+                </Button>
+                {editingItineraryId && (
+                  <Button variant="outline" onClick={resetItineraryForm}>Cancel Edit</Button>
+                )}
+                <Button variant="outline" onClick={handleSeedItinerary} disabled={isSeedingItinerary}>
+                  {isSeedingItinerary ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  Add Demo Events
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Scheduled Events ({itineraryEventsData.length})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {itineraryEventsData.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No itinerary events yet.</div>
+              ) : (
+                <div className="space-y-3">
+                  {[...itineraryEventsData]
+                    .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+                    .map((item: any) => (
+                      <div key={item.id} className="rounded-lg border p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-medium">{item.title}</p>
+                            {item.isMandatory && <span className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary">Mandatory</span>}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(item.startTime), "PPP p")} → {format(new Date(item.endTime), "PPP p")}
+                          </p>
+                          {item.location && <p className="text-xs text-muted-foreground">{item.location}</p>}
+                          {item.description && <p className="text-sm mt-1">{item.description}</p>}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button size="sm" variant="outline" onClick={() => handleEditItinerary(item)}>
+                            <Edit className="w-3.5 h-3.5 mr-1.5" /> Edit
+                          </Button>
+                          <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDeleteItinerary(item.id)}>
+                            <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Delete
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="requests">

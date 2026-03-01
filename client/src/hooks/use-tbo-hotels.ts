@@ -14,6 +14,7 @@ export function useTBOCountries() {
     queryKey: ["tbo-hotel-countries"],
     queryFn: () => apiFetch("/api/tbo/hotel/countries"),
     staleTime: 1000 * 60 * 60, // 1 hour
+    retry: 0, // Show fallback countries immediately if TBO is unavailable
   });
 }
 
@@ -23,6 +24,7 @@ export function useTBOCities(countryCode: string) {
     queryFn: () => apiFetch(`/api/tbo/hotel/cities?countryCode=${countryCode}`),
     enabled: !!countryCode,
     staleTime: 1000 * 60 * 60,
+    retry: 0, // Show text input fallback immediately if TBO is unavailable
   });
 }
 

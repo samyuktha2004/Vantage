@@ -68,7 +68,12 @@ export default function GuestTravel({ token }: { token: string }) {
                   <span>{guest.name}</span>
                   <span className="text-muted-foreground">Primary Guest</span>
                 </li>
-                {/* Family members would be mapped here */}
+                {Array.isArray(guest.familyMembers) && guest.familyMembers.map((fm: any, i: number) => (
+                  <li key={i} className="flex justify-between text-sm">
+                    <span>{fm.name}</span>
+                    <span className="text-muted-foreground">{fm.relationship}</span>
+                  </li>
+                ))}
                 <li className="text-xs text-muted-foreground pt-2 border-t border-border/50">
                   Need to add a +1 or child? Please contact your agent.
                 </li>
@@ -80,7 +85,7 @@ export default function GuestTravel({ token }: { token: string }) {
         <div className="flex justify-end">
           <Button 
             className="btn-primary px-8 h-12 text-lg rounded-full"
-            onClick={() => setLocation(`/guest/concierge?ref=${token}`)}
+            onClick={() => setLocation(`/guest/${token}/concierge`)}
           >
             Continue to Concierge <ChevronRight className="ml-2 w-5 h-5" />
           </Button>

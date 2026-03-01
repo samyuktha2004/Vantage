@@ -60,6 +60,8 @@ interface SearchParams {
   checkOut: string;
   numberOfRooms: number;
   nationality: string;
+  minPrice: string;
+  maxPrice: string;
 }
 
 interface Props {
@@ -84,6 +86,8 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
     checkOut: "",
     numberOfRooms: 1,
     nationality: "IN",
+    minPrice: "",
+    maxPrice: "",
   });
   const [selectedCountry, setSelectedCountry] = useState("");
   const [countryOpen, setCountryOpen] = useState(false);
@@ -161,7 +165,22 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
         IsNearBySearchAllowed: false,
       });
 
-      const hotels: HotelResult[] = result?.HotelResults ?? [];
+      let hotels: HotelResult[] = result?.HotelResults ?? [];
+      // Apply optional client-side price filters
+      const minP = searchParams.minPrice ? Number(searchParams.minPrice) : null;
+      const maxP = searchParams.maxPrice ? Number(searchParams.maxPrice) : null;
+      if (minP !== null || maxP !== null) {
+        hotels = hotels.filter((h) => {
+          const lowest = h.Rooms?.reduce(
+            (min, r) => (r.Price.RoomPrice < min.Price.RoomPrice ? r : min),
+            h.Rooms[0]
+          );
+          const price = lowest?.Price.RoomPrice ?? 0;
+          if (minP !== null && price < minP) return false;
+          if (maxP !== null && price > maxP) return false;
+          return true;
+        });
+      }
       setHotelResults(hotels);
       setPhase("results");
     } catch (err: any) {
@@ -402,6 +421,28 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
               value={searchParams.nationality}
               maxLength={2}
               onChange={(e) => setSearchParams((p) => ({ ...p, nationality: e.target.value.toUpperCase() }))}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Min Price / night (₹) <span className="text-muted-foreground text-xs font-normal">— optional</span></Label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="e.g. 2000"
+              value={searchParams.minPrice}
+              onChange={(e) => setSearchParams((p) => ({ ...p, minPrice: e.target.value }))}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Max Price / night (₹) <span className="text-muted-foreground text-xs font-normal">— optional</span></Label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="e.g. 10000"
+              value={searchParams.maxPrice}
+              onChange={(e) => setSearchParams((p) => ({ ...p, maxPrice: e.target.value }))}
             />
           </div>
         </div>

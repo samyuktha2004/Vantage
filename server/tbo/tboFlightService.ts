@@ -73,10 +73,17 @@ async function getFlightToken(): Promise<string> {
       UserName: userName,
       Password: password,
       EndUserIp: endUserIp,
+      BookingMode: "API",
     }),
   });
 
-  const data = (await res.json()) as TBOAuthResponse;
+  const rawAuth = await res.text();
+  let data: TBOAuthResponse;
+  try {
+    data = JSON.parse(rawAuth) as TBOAuthResponse;
+  } catch {
+    throw new Error(`TBO Air auth returned non-JSON: ${rawAuth.slice(0, 200)}`);
+  }
 
   if (!data.TokenId) {
     throw new Error(
@@ -101,9 +108,10 @@ function getEndUserIp(): string {
   return process.env.TBO_AIR_SERVER_IP ?? "127.0.0.1";
 }
 
-async function tboAirFetch<T>(path: string, body: object): Promise<T> {
+async function tboAirFetch<T>(path: string, body: object, _retried = false): Promise<T> {
   const tokenId = await getFlightToken();
   const url = `${getBaseUrl()}${path}`;
+  console.log("[TBO Air] Calling URL:", url);
 
   const res = await fetch(url, {
     method: "POST",
@@ -118,14 +126,30 @@ async function tboAirFetch<T>(path: string, body: object): Promise<T> {
     }),
   });
 
+  const rawText = await res.text();
   if (!res.ok) {
-    throw new Error(`TBO Air API HTTP error ${res.status} at ${path}`);
+    throw new Error(`TBO Air API HTTP error ${res.status} at ${path}: ${rawText.slice(0, 200)}`);
   }
 
-  const data = (await res.json()) as any;
+  let data: any;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    throw new Error(`TBO Air API returned non-JSON at ${path}: ${rawText.slice(0, 200)}`);
+  }
 
-  if (data?.Response?.Error?.ErrorCode && data.Response.Error.ErrorCode !== 0) {
-    throw new Error(`TBO Air API error: ${data.Response.Error.ErrorMessage}`);
+  const errorCode: number | undefined = data?.Response?.Error?.ErrorCode;
+  const errorMsg: string = data?.Response?.Error?.ErrorMessage ?? "";
+
+  // If TBO says the token is invalid/expired and we haven't retried, clear cache and retry once
+  if (!_retried && errorCode && errorCode !== 0 && /token|auth|session|invalid/i.test(errorMsg)) {
+    cachedToken = null;
+    console.log("[TBO Air] Token rejected by server — refreshing and retrying");
+    return tboAirFetch<T>(path, body, true);
+  }
+
+  if (errorCode && errorCode !== 0) {
+    throw new Error(`TBO Air API error: ${errorMsg}`);
   }
 
   return data as T;

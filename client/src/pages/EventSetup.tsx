@@ -183,6 +183,7 @@ export default function EventSetup() {
       const response = await fetch(`/api/events/${id}/client-details`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(data),
       });
 

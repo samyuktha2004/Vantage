@@ -230,6 +230,23 @@ export async function registerRoutes(
     }
   });
 
+  // Must be registered BEFORE /api/events/:id to avoid Express matching "my-client-events" as an id
+  app.get("/api/events/my-client-events", async (req, res) => {
+    try {
+      const user = getUser(req);
+      if (!user || user.role !== "client") {
+        return res.status(403).json({ message: "Client access required" });
+      }
+      const whereClause = user.eventCode
+        ? or(eq(events.clientId, user.id), eq(events.eventCode, user.eventCode))
+        : eq(events.clientId, user.id);
+      const clientEvents = await db.select().from(events).where(whereClause);
+      res.json(clientEvents);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message ?? "Failed to load events" });
+    }
+  });
+
   app.get(api.events.get.path, async (req, res) => {
     const event = await storage.getEvent(Number(req.params.id));
     if (!event) return res.status(404).json({ message: "Event not found" });
@@ -618,6 +635,23 @@ export async function registerRoutes(
     }
   });
 
+  // Must be registered BEFORE /api/guests/:id to avoid "lookup" being matched as an id
+  app.get(api.guests.lookup.path, async (req, res) => {
+    const ref = req.query.ref as string;
+    if (!ref) return res.status(400).json({ message: "Booking reference required" });
+    const guest = await storage.getGuestByRef(ref);
+    if (!guest) return res.status(404).json({ message: "Invitation not found" });
+    let availablePerks: any[] = [];
+    if (guest.label) {
+      const labelPerks = await storage.getLabelPerks(guest.label.id);
+      availablePerks = labelPerks
+        .filter(lp => lp.isEnabled)
+        .map(lp => ({ ...lp.perk, isEnabled: lp.isEnabled, expenseHandledByClient: lp.expenseHandledByClient }));
+    }
+    const family = await storage.getGuestFamily(guest.id);
+    res.json({ ...guest, family, availablePerks });
+  });
+
   app.get(api.guests.get.path, async (req, res) => {
     const guest = await storage.getGuest(Number(req.params.id));
     if (!guest) return res.status(404).json({ message: "Guest not found" });
@@ -742,6 +776,91 @@ export async function registerRoutes(
       }
   });
   
+  // GET /api/events/:eventId/itinerary — list itinerary events
+  app.get("/api/events/:eventId/itinerary", async (req, res) => {
+    try {
+      const eventId = Number(req.params.eventId);
+      const rows = await db.select().from(itineraryEvents).where(eq(itineraryEvents.eventId, eventId));
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message ?? "Failed to get itinerary" });
+    }
+  });
+
+  // POST /api/events/:eventId/itinerary — create itinerary event
+  app.post("/api/events/:eventId/itinerary", async (req, res) => {
+    try {
+      const user = getUser(req);
+      if (!user || user.role !== "agent") return res.status(403).json({ message: "Agent access required" });
+      const eventId = Number(req.params.eventId);
+      const { title, description, startTime, endTime, location, capacity, isMandatory } = req.body;
+      if (!title || !startTime || !endTime) return res.status(400).json({ message: "title, startTime and endTime are required" });
+      const [created] = await db.insert(itineraryEvents).values({
+        eventId, title, description, startTime: new Date(startTime), endTime: new Date(endTime),
+        location, capacity: capacity ?? null, isMandatory: isMandatory ?? false,
+      }).returning();
+      res.status(201).json(created);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message ?? "Failed to create itinerary event" });
+    }
+  });
+
+  // PUT /api/events/:eventId/itinerary/:itineraryId — update itinerary event
+  app.put("/api/events/:eventId/itinerary/:itineraryId", async (req, res) => {
+    try {
+      const user = getUser(req);
+      if (!user || user.role !== "agent") return res.status(403).json({ message: "Agent access required" });
+
+      const eventId = Number(req.params.eventId);
+      const itineraryId = Number(req.params.itineraryId);
+      const { title, description, startTime, endTime, location, capacity, isMandatory } = req.body;
+
+      if (!title || !startTime || !endTime) {
+        return res.status(400).json({ message: "title, startTime and endTime are required" });
+      }
+
+      const [updated] = await db
+        .update(itineraryEvents)
+        .set({
+          title,
+          description,
+          startTime: new Date(startTime),
+          endTime: new Date(endTime),
+          location,
+          capacity: capacity ?? null,
+          isMandatory: isMandatory ?? false,
+        })
+        .where(and(eq(itineraryEvents.id, itineraryId), eq(itineraryEvents.eventId, eventId)))
+        .returning();
+
+      if (!updated) return res.status(404).json({ message: "Itinerary event not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message ?? "Failed to update itinerary event" });
+    }
+  });
+
+  // DELETE /api/events/:eventId/itinerary/:itineraryId — delete itinerary event
+  app.delete("/api/events/:eventId/itinerary/:itineraryId", async (req, res) => {
+    try {
+      const user = getUser(req);
+      if (!user || user.role !== "agent") return res.status(403).json({ message: "Agent access required" });
+
+      const eventId = Number(req.params.eventId);
+      const itineraryId = Number(req.params.itineraryId);
+
+      const [deleted] = await db
+        .delete(itineraryEvents)
+        .where(and(eq(itineraryEvents.id, itineraryId), eq(itineraryEvents.eventId, eventId)))
+        .returning();
+
+      if (!deleted) return res.status(404).json({ message: "Itinerary event not found" });
+      res.json({ message: "Deleted" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message ?? "Failed to delete itinerary event" });
+    }
+  });
+
   // Seed itinerary events (for demo purposes)
   app.post("/api/events/:id/seed-itinerary", async (req, res) => {
     try {
