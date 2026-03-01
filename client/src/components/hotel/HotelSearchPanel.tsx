@@ -17,9 +17,13 @@ import {
   useTBOHotelSearch,
   useTBOPrebook,
 } from "@/hooks/use-tbo-hotels";
-import { HotelResultsList, type HotelResult, type RoomOption } from "./HotelResultsList";
-import { HotelRoomSelector } from "./HotelRoomSelector";
+import { HotelResultsList, type HotelResult } from "./HotelResultsList";
+import { HotelRoomSelector, type RoomSelection } from "./HotelRoomSelector";
 import { HotelBookingConfirmCard } from "./HotelBookingConfirmCard";
+import {
+  generateMockHotelsForCity,
+  isMockHotelSelection,
+} from "@/lib/uat-mock-generators";
 
 // Fallback countries shown when TBO country API is unavailable
 const FALLBACK_COUNTRIES = [
@@ -70,7 +74,7 @@ interface Props {
     hotelName: string;
     checkInDate: string;
     checkOutDate: string;
-    numberOfRooms: number;
+    totalRooms: number;
     confirmationNumber?: string;
     tboHotelData: unknown;
   }) => void;
@@ -94,8 +98,9 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
   const [cityOpen, setCityOpen] = useState(false);
   const [hotelResults, setHotelResults] = useState<HotelResult[]>([]);
   const [selectedHotel, setSelectedHotel] = useState<HotelResult | null>(null);
-  const [selectedRoom, setSelectedRoom] = useState<RoomOption | null>(null);
+  const [roomSelections, setRoomSelections] = useState<RoomSelection[]>([]);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [isLiveResult, setIsLiveResult] = useState(false);
   const [commissionType, setCommissionType] = useState<CommissionType>("amount");
   const [commissionValue, setCommissionValue] = useState(0);
 
@@ -166,6 +171,13 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
       });
 
       let hotels: HotelResult[] = result?.HotelResults ?? [];
+      const gotLiveResults = hotels.length > 0;
+
+      if (hotels.length === 0) {
+        hotels = generateMockHotelsForCity(searchParams.cityCode);
+      }
+      setIsLiveResult(gotLiveResults);
+
       // Apply optional client-side price filters
       const minP = searchParams.minPrice ? Number(searchParams.minPrice) : null;
       const maxP = searchParams.maxPrice ? Number(searchParams.maxPrice) : null;
@@ -184,31 +196,44 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
       setHotelResults(hotels);
       setPhase("results");
     } catch (err: any) {
+      const fallbackHotels = generateMockHotelsForCity(searchParams.cityCode);
+      if (fallbackHotels.length > 0) {
+        setIsLiveResult(false);
+        setHotelResults(fallbackHotels);
+        setPhase("results");
+        return;
+      }
       toast({ title: "Search failed", description: err.message, variant: "destructive" });
     }
   };
 
   const handleSelectHotel = (hotel: HotelResult) => {
     setSelectedHotel(hotel);
+    setRoomSelections([]);
     setPhase("rooms");
   };
 
-  const handleSelectRoom = (room: RoomOption) => {
-    setSelectedRoom(room);
+  const handleSelectRooms = (selections: RoomSelection[]) => {
+    setRoomSelections(selections);
     setPhase("confirm");
   };
 
   const handleConfirmBooking = async () => {
-    if (!selectedHotel || !selectedRoom) return;
+    if (!selectedHotel || roomSelections.length === 0) return;
     setIsConfirming(true);
     try {
-      // PreBook to hold the rate
-      const preBookResult = await preBook.mutateAsync({
-        bookingCode: selectedRoom.BookingCode,
-        paymentMode: "Limit",
-      });
+      const isMockHotel = isMockHotelSelection(roomSelections[0]?.room.BookingCode, selectedHotel.HotelCode);
 
-      // Validate and convert dates — append T00:00:00 to prevent UTC timezone shift
+      // PreBook each room type (first one is representative for the hold)
+      const preBookResults = isMockHotel
+        ? roomSelections.map(({ room }) => ({ BookingCode: room.BookingCode, status: "mock-prebook", source: "uat-fallback" }))
+        : await Promise.all(
+            roomSelections.map(({ room }) =>
+              preBook.mutateAsync({ bookingCode: room.BookingCode, paymentMode: "Limit" })
+            )
+          );
+
+      // Validate dates
       if (!searchParams.checkIn || !searchParams.checkOut) {
         throw new Error("Check-in and check-out dates are required");
       }
@@ -218,25 +243,41 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
       if (isNaN(checkOutDate.getTime())) throw new Error("Invalid check-out date");
       if (checkOutDate <= checkInDate) throw new Error("Check-out date must be after check-in date");
 
-      // Save to DB via existing hotel-booking route with tboHotelData
-      const baseRate = Number(selectedRoom?.Price?.RoomPrice ?? 0);
+      const nights = Math.round((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+      const totalRooms = roomSelections.reduce((s, x) => s + x.quantity, 0);
+
+      // Aggregate base rate (weighted average per night)
+      const totalNightCost = roomSelections.reduce(
+        (sum, { room, quantity }) => sum + room.Price.RoomPrice * quantity,
+        0
+      );
+      const baseRate = totalRooms > 0 ? Math.round(totalNightCost / totalRooms) : 0;
       const clientFacingRate = baseRate > 0 ? getEditedRate(baseRate) : null;
+
       const payload = {
         eventId,
         hotelName: selectedHotel.HotelName,
         checkInDate: checkInDate.toISOString(),
         checkOutDate: checkOutDate.toISOString(),
-        numberOfRooms: searchParams.numberOfRooms,
+        numberOfRooms: totalRooms,
         baseRate: baseRate > 0 ? baseRate : null,
         commissionType,
         commissionValue: commissionValue > 0 ? commissionValue : 0,
         clientFacingRate,
         tboHotelData: {
           hotelCode: selectedHotel.HotelCode,
-          roomTypeName: selectedRoom.RoomTypeName,
-          bookingCode: preBookResult?.BookingCode ?? selectedRoom.BookingCode,
-          preBookResponse: preBookResult,
-          originalRoom: selectedRoom,
+          isMockFallback: isMockHotel,
+          isLiveResult,
+          nights,
+          roomSelections: roomSelections.map(({ room, quantity }, i) => ({
+            roomTypeName: room.RoomTypeName,
+            bookingCode: (preBookResults[i] as any)?.BookingCode ?? room.BookingCode,
+            quantity,
+            pricePerNight: room.Price.RoomPrice,
+            currency: room.Price.CurrencyCode,
+            isRefundable: room.IsRefundable,
+            mealType: room.MealType,
+          })),
           hotel: selectedHotel,
         },
       };
@@ -253,14 +294,24 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
         throw new Error(err.message ?? "Failed to save hotel booking");
       }
 
-      toast({ title: "Hotel blocked!", description: `${selectedHotel.HotelName} — ${searchParams.numberOfRooms} rooms reserved.` });
+      const roomSummary = roomSelections
+        .map(({ room, quantity }) => `${quantity}× ${room.RoomTypeName}`)
+        .join(", ");
+      toast({
+        title: "Hotel blocked!",
+        description: `${selectedHotel.HotelName} — ${roomSummary}`,
+      });
       onBooked({
         hotelName: selectedHotel.HotelName,
         checkInDate: searchParams.checkIn,
         checkOutDate: searchParams.checkOut,
-        numberOfRooms: searchParams.numberOfRooms,
+        totalRooms,
         tboHotelData: payload.tboHotelData,
       });
+
+      setSelectedHotel(null);
+      setRoomSelections([]);
+      setPhase("search");
     } catch (err: any) {
       toast({ title: "Booking failed", description: err.message, variant: "destructive" });
     } finally {
@@ -466,9 +517,14 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            {hotelResults.length} hotels found
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm text-muted-foreground">{hotelResults.length} hotels found</p>
+            {isLiveResult ? (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-300">Live — TBO</span>
+            ) : (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300">Demo Fallback</span>
+            )}
+          </div>
           <Button variant="ghost" size="sm" onClick={() => setPhase("search")}>
             ← Modify search
           </Button>
@@ -482,23 +538,27 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
     return (
       <HotelRoomSelector
         hotel={selectedHotel}
-        onSelectRoom={handleSelectRoom}
+        onSelectRooms={handleSelectRooms}
         onBack={() => setPhase("results")}
       />
     );
   }
 
-  if (phase === "confirm" && selectedHotel && selectedRoom) {
-    const baseRate = Number(selectedRoom?.Price?.RoomPrice ?? 0);
-    const editedRate = baseRate > 0 ? getEditedRate(baseRate) : 0;
+  if (phase === "confirm" && selectedHotel && roomSelections.length > 0) {
+    const totalRooms = roomSelections.reduce((s, x) => s + x.quantity, 0);
+    const totalNightCost = roomSelections.reduce(
+      (sum, { room, quantity }) => sum + room.Price.RoomPrice * quantity,
+      0
+    );
+    const avgBaseRate = totalRooms > 0 ? Math.round(totalNightCost / totalRooms) : 0;
+    const editedRate = avgBaseRate > 0 ? getEditedRate(avgBaseRate) : 0;
     return (
       <div className="space-y-4">
         <HotelBookingConfirmCard
           hotel={selectedHotel}
-          room={selectedRoom}
+          roomSelections={roomSelections}
           checkIn={searchParams.checkIn}
           checkOut={searchParams.checkOut}
-          numberOfRooms={searchParams.numberOfRooms}
           onConfirm={handleConfirmBooking}
           onBack={() => setPhase("rooms")}
           isLoading={isConfirming}
@@ -507,8 +567,8 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
           <p className="text-sm font-medium">Client Pricing (visible to client/guest)</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1">
-              <Label>Base Rate (₹)</Label>
-              <Input value={baseRate > 0 ? baseRate : ""} disabled />
+              <Label>Avg Base Rate/room/night (₹)</Label>
+              <Input value={avgBaseRate > 0 ? avgBaseRate : ""} disabled />
             </div>
             <div className="space-y-1">
               <Label>Commission Type</Label>
@@ -534,7 +594,7 @@ export function HotelSearchPanel({ eventId, onBooked }: Props) {
             </div>
           </div>
           {editedRate > 0 && (
-            <p className="text-xs text-primary font-medium">Edited client room rate: ₹{editedRate.toLocaleString("en-IN")}</p>
+            <p className="text-xs text-primary font-medium">Edited client avg room rate: ₹{editedRate.toLocaleString("en-IN")}/room/night</p>
           )}
         </div>
       </div>

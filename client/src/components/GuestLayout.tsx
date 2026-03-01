@@ -74,7 +74,7 @@ export function GuestLayout({ children, step, token }: GuestLayoutProps) {
 
       {/* Footer */}
       <footer className="py-12 text-center text-sm text-muted-foreground border-t border-border/40 mt-12">
-        <p>© 2024 Vantage Hospitality. All rights reserved.</p>
+        <p> Vantage for TBO Voyagehacks 3.0. All rights reserved.</p>
       </footer>
     </div>
   );

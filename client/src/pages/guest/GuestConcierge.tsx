@@ -28,7 +28,7 @@ export default function GuestConcierge({ token }: { token: string }) {
   const handleRequest = async (perk: any) => {
     try {
       await submitRequest.mutateAsync({
-        type: 'perk_request',
+        type: 'perk',
         addonType: perk.name,
         perkId: perk.id,
         budgetConsumed: perk.clientFacingRate ?? perk.unitCost ?? 0,
@@ -108,7 +108,7 @@ export default function GuestConcierge({ token }: { token: string }) {
               variant="outline"
               className="gap-2 bg-white"
               onClick={() => {
-                window.location.href = `mailto:groups@tbo.com?subject=${encodeURIComponent("Concierge support request")}`;
+                window.location.href = `mailto:support@vantage.co?subject=${encodeURIComponent("Concierge support request — " + (guestData.event?.name ?? "event"))}`;
               }}
             >
               <Mail className="w-4 h-4" /> Email Concierge
@@ -117,7 +117,7 @@ export default function GuestConcierge({ token }: { token: string }) {
               variant="outline"
               className="gap-2 bg-white"
               onClick={() => {
-                window.location.href = "tel:+91-124-4998999";
+                window.location.href = "tel:+91-9999999999";
               }}
             >
               <Phone className="w-4 h-4" /> Call Support

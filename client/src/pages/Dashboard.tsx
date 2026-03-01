@@ -470,27 +470,28 @@ export default function Dashboard() {
                 </div>
               </div>
               
-              <Link href={`/events/${event.id}`}>
-                <div className="cursor-pointer">
+              <div>
                   <h3 className="text-xl font-bold text-primary mb-2 line-clamp-1">{event.name}</h3>
 
                   <div className="space-y-2 mt-auto text-sm text-muted-foreground">
                     <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4" />
-                      <span>{format(new Date(event.date), "PPP")}</span>
+                      <Calendar className="w-4 h-4 shrink-0" />
+                      <span className="truncate">{format(new Date(event.date), "PPP")}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4" />
-                      <span>{event.location}</span>
+                      <MapPin className="w-4 h-4 shrink-0" />
+                      <span className="truncate">{event.location}</span>
                     </div>
                   </div>
 
                   <div className="mt-4 pt-4 border-t border-border/50">
-                    <div className="flex gap-2 mb-3">
+                    <div className="flex items-center justify-end gap-2 mb-3">
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-none sm:flex-1 gap-1 text-xs h-8"
+                        className="h-8 w-8 p-0"
+                        aria-label="Labels"
+                        title="Labels"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -498,12 +499,13 @@ export default function Dashboard() {
                         }}
                       >
                         <Tag className="w-3 h-3" />
-                        Labels
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-none sm:flex-1 gap-1 text-xs h-8"
+                        className="h-8 w-8 p-0"
+                        aria-label="Perks"
+                        title="Perks"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -511,12 +513,13 @@ export default function Dashboard() {
                         }}
                       >
                         <Gift className="w-3 h-3" />
-                        Perks
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-none sm:flex-1 gap-1 text-xs h-8"
+                        className="h-8 w-8 p-0"
+                        aria-label="Setup"
+                        title="Setup"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -524,16 +527,16 @@ export default function Dashboard() {
                         }}
                       >
                         <Settings className="w-3 h-3" />
-                        Setup
                       </Button>
                     </div>
                   </div>
 
-                  <div className="flex items-center text-primary font-medium text-sm group-hover:translate-x-1 transition-transform">
-                    Manage Event <ArrowRight className="w-4 h-4 ml-1" />
-                  </div>
+                  <Link href={`/events/${event.id}`}>
+                    <div className="flex items-center text-primary font-medium text-sm group-hover:translate-x-1 transition-transform cursor-pointer">
+                      Manage Event <ArrowRight className="w-4 h-4 ml-1" />
+                    </div>
+                  </Link>
                 </div>
-              </Link>
             </div>
           ))}
         </div>

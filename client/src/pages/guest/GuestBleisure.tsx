@@ -282,7 +282,7 @@ export default function GuestBleisure({ token }: { token: string }) {
               ) : (
                 <>
                   Confirm Dates
-                  {totalExtraCost > 0 && ` — $${totalExtraCost}`}
+                  {totalExtraCost > 0 && ` — ₹${totalExtraCost.toLocaleString("en-IN")}`}
                 </>
               )}
             </Button>

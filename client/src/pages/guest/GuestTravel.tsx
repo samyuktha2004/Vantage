@@ -82,8 +82,15 @@ export default function GuestTravel({ token }: { token: string }) {
           </div>
         </div>
 
-        <div className="flex justify-end">
-          <Button 
+        <div className="flex justify-between items-center">
+          <Button
+            variant="ghost"
+            className="text-muted-foreground"
+            onClick={() => setLocation(`/guest/${token}/travel-prefs`)}
+          >
+            Edit travel preferences
+          </Button>
+          <Button
             className="btn-primary px-8 h-12 text-lg rounded-full"
             onClick={() => setLocation(`/guest/${token}/concierge`)}
           >

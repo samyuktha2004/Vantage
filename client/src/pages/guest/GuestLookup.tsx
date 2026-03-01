@@ -70,7 +70,7 @@ export default function GuestLookup() {
 
         <div className="mt-8 pt-8 border-t border-border/50">
           <p className="text-xs text-muted-foreground">
-            Having trouble? <a href="#" className="text-primary underline">Contact Support</a>
+            Having trouble? <a href="mailto:support@vantage.co" className="text-primary underline">Contact Support</a>
           </p>
         </div>
       </div>

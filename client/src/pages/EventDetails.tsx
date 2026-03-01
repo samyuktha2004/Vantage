@@ -6,6 +6,7 @@ import ClientEventView from "./ClientEventView";
 import { Loader2, Users, Tag, Gift, Inbox, Upload, FileSpreadsheet, Download, Eye, Edit, Plus, Trash2, Settings, FileDown, CheckSquare, BarChart3, Hotel, Plane, AlertTriangle, Globe, UserPlus, Copy } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +19,7 @@ import { usePerks } from "@/hooks/use-perks";
 import { useRequests } from "@/hooks/use-requests";
 import { useHotelBookings } from "@/hooks/use-hotel-bookings";
 import { format } from "date-fns";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { parseExcelFile, parseCSVFile, generateGuestListTemplate, exportManifestToExcel } from "@/lib/excelParser";
 import { generateEventReport } from "@/lib/reportGenerator";
 import { useToast } from "@/hooks/use-toast";
@@ -50,6 +51,18 @@ export default function EventDetails() {
   // Get tab from URL query parameter
   const urlParams = new URLSearchParams(window.location.search);
   const initialTab = urlParams.get('tab') || 'guests';
+  const shouldAutoScrollToTabs = urlParams.has("tab");
+
+  useEffect(() => {
+    if (!shouldAutoScrollToTabs) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById("event-details-tabs")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [id, shouldAutoScrollToTabs]);
   
   // Fetch related data
   const { data: guests, refetch: refetchGuests, isLoading: isLoadingGuests, error: guestsError } = useGuests(id);
@@ -141,6 +154,33 @@ export default function EventDetails() {
     },
     enabled: !!id,
   });
+
+  const itineraryConflictIds = useMemo(() => {
+    const conflicts = new Set<number>();
+    const rows = [...(itineraryEventsData as any[])];
+
+    for (let i = 0; i < rows.length; i++) {
+      const a = rows[i];
+      const aStart = new Date(a.startTime).getTime();
+      const aEnd = new Date(a.endTime).getTime();
+      if (!Number.isFinite(aStart) || !Number.isFinite(aEnd)) continue;
+
+      for (let j = i + 1; j < rows.length; j++) {
+        const b = rows[j];
+        const bStart = new Date(b.startTime).getTime();
+        const bEnd = new Date(b.endTime).getTime();
+        if (!Number.isFinite(bStart) || !Number.isFinite(bEnd)) continue;
+
+        const overlaps = aStart < bEnd && aEnd > bStart;
+        if (overlaps) {
+          if (!a.isMandatory) conflicts.add(a.id);
+          if (!b.isMandatory) conflicts.add(b.id);
+        }
+      }
+    }
+
+    return conflicts;
+  }, [itineraryEventsData]);
 
   // Microsite appearance state
   const THEME_PRESETS: { value: string; label: string; color: string }[] = [
@@ -909,6 +949,7 @@ export default function EventDetails() {
         />
       )}
       {/* Tabs */}
+      <div id="event-details-tabs">
       <Tabs defaultValue={initialTab} className="w-full">
         <TabsList className="bg-white border border-border/50 p-1 mb-6 rounded-xl flex-wrap">
           <TabsTrigger value="guests" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white">Guests</TabsTrigger>
@@ -1357,7 +1398,7 @@ export default function EventDetails() {
                       <Label htmlFor="perkCommissionType">Commission Type</Label>
                       <select
                         id="perkCommissionType"
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                        className="flex h-10 w-full rounded-md border border-input bg-white text-gray-900 px-3 py-2 text-sm"
                         value={newPerkData.commissionType}
                         onChange={(e) => {
                           const commissionType = e.target.value;
@@ -1398,7 +1439,7 @@ export default function EventDetails() {
                     <Label htmlFor="perkPricingType">Pricing Type</Label>
                     <select
                       id="perkPricingType"
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                      className="flex h-10 w-full rounded-md border border-input bg-white text-gray-900 px-3 py-2 text-sm"
                       value={newPerkData.pricingType}
                       onChange={(e) => setNewPerkData({ ...newPerkData, pricingType: e.target.value })}
                     >
@@ -1559,6 +1600,12 @@ export default function EventDetails() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Scheduled Events ({itineraryEventsData.length})</CardTitle>
+              {itineraryConflictIds.size > 0 && (
+                <CardDescription className="flex items-center gap-1.5 text-amber-700">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  {itineraryConflictIds.size} event{itineraryConflictIds.size > 1 ? "s" : ""} have schedule conflicts
+                </CardDescription>
+              )}
             </CardHeader>
             <CardContent>
               {itineraryEventsData.length === 0 ? (
@@ -1567,12 +1614,15 @@ export default function EventDetails() {
                 <div className="space-y-3">
                   {[...itineraryEventsData]
                     .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-                    .map((item: any) => (
-                      <div key={item.id} className="rounded-lg border p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    .map((item: any) => {
+                      const hasConflict = itineraryConflictIds.has(item.id);
+                      return (
+                      <div key={item.id} className={`rounded-lg border p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3 ${hasConflict ? "border-amber-300 bg-amber-50/40" : ""}`}>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-medium">{item.title}</p>
                             {item.isMandatory && <span className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary">Mandatory</span>}
+                            {hasConflict && <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800">Conflict</span>}
                           </div>
                           <p className="text-xs text-muted-foreground">
                             {format(new Date(item.startTime), "PPP p")} → {format(new Date(item.endTime), "PPP p")}
@@ -1589,7 +1639,7 @@ export default function EventDetails() {
                           </Button>
                         </div>
                       </div>
-                    ))}
+                    )})}
                 </div>
               )}
             </CardContent>
@@ -1744,6 +1794,7 @@ export default function EventDetails() {
           </Button>
         </TabsContent>
       </Tabs>
+      </div>
     </DashboardLayout>
   );
 }
@@ -1799,6 +1850,8 @@ function InventoryTab({ eventId }: { eventId: number }) {
     },
     enabled: !!eventId,
   });
+
+  const [autoTopUp, setAutoTopUp] = useState<Record<number, boolean>>({});
 
   if (isLoading) {
     return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
@@ -1869,6 +1922,25 @@ function InventoryTab({ eventId }: { eventId: number }) {
                       Less than 10% rooms remaining
                     </div>
                   )}
+                  <div className="flex items-center justify-between pt-2 mt-2 border-t border-border/40">
+                    <div className="flex-1 mr-3">
+                      <p className="text-xs font-medium">Auto Top-Up</p>
+                      <p className="text-xs text-muted-foreground">
+                        When block falls below 10%, pull live TBO retail inventory at preset markup.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Switch
+                        checked={autoTopUp[booking.id] ?? false}
+                        onCheckedChange={(v) => setAutoTopUp({ ...autoTopUp, [booking.id]: v })}
+                      />
+                      {autoTopUp[booking.id] && (
+                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 font-semibold bg-amber-100 text-amber-700 text-xs border-amber-200">
+                          Auto Top-Up: ON
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               );
             })

@@ -113,11 +113,15 @@ tboFlightRoutes.post("/api/tbo/flight/search", async (req, res) => {
       PreferredAirlines: null,
       Sources: null,
       Segments: segments,
-      ResultFareType: "RegularFare",
     });
 
     res.json(result);
   } catch (err: any) {
+    // "No result found" is TBO's normal empty-inventory response — return empty results
+    // so the UI can display "No flights found" rather than an unavailable error.
+    if (/no result/i.test(err.message ?? "")) {
+      return res.json({ Response: { TraceId: "", Results: [], Error: { ErrorCode: 0, ErrorMessage: "" } } });
+    }
     console.error("[TBO Flight] searchFlights error:", err.message);
     res.status(502).json({ message: err.message ?? "TBO Flight search failed" });
   }

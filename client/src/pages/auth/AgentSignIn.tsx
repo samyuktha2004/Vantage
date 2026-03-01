@@ -71,9 +71,26 @@ export default function AgentSignIn() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-primary mb-2">Agent Sign In</h1>
-          <p className="text-muted-foreground">Access your event management dashboard</p>
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-bold text-primary mb-1">Agent Sign In</h1>
+          <p className="text-sm text-muted-foreground">Access your event management dashboard</p>
+        </div>
+
+        <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-border/60 bg-muted/20 p-1">
+          <button
+            type="button"
+            className="h-9 rounded-lg bg-primary text-primary-foreground text-sm font-medium"
+            aria-current="page"
+          >
+            Agent
+          </button>
+          <button
+            type="button"
+            className="h-9 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+            onClick={() => navigate("/auth/groundteam/signin")}
+          >
+            Ground Team
+          </button>
         </div>
 
         <div className="bg-white border border-border rounded-2xl p-8 shadow-lg">

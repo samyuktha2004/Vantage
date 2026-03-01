@@ -3,8 +3,9 @@
  * All calls are server-side only. Credentials never reach the client.
  *
  * Base URL: TBO_AIR_URL env var
- * Auth:     Token-based via ValidateAgency endpoint
- *           Token is cached in-memory for 55 minutes.
+ *   → http://api.tektravels.com/BookingEngineService_Air/AirService.svc/rest
+ * Auth:     Token-based via Sharedapi.tektravels.com/SharedData.svc/rest/Authenticate
+ *           Token is cached in-memory until midnight.
  *
  * Flow (LCC):     auth → search → fareQuote → SSR → issueTicketLCC
  * Flow (Non-LCC): auth → search → fareQuote → SSR → bookFlight → issueTicketGDS
@@ -160,7 +161,21 @@ async function tboAirFetch<T>(path: string, body: object, _retried = false): Pro
 export async function searchFlights(
   req: TBOFlightSearchRequest
 ): Promise<TBOFlightSearchResponse> {
-  return tboAirFetch<TBOFlightSearchResponse>("/Search/", req);
+  // TBO WCF expects numeric/boolean fields serialized as strings (confirmed by Staging Postman collection)
+  const tboBody = {
+    ...req,
+    AdultCount: String(req.AdultCount),
+    ChildCount: String(req.ChildCount),
+    InfantCount: String(req.InfantCount),
+    DirectFlight: String(req.DirectFlight),
+    OneStopFlight: String(req.OneStopFlight),
+    Segments: req.Segments.map((s) => ({
+      ...s,
+      FlightCabinClass: String(s.FlightCabinClass),
+    })),
+    ResultFareType: undefined, // not present in Staging collection — omit to avoid 400
+  };
+  return tboAirFetch<TBOFlightSearchResponse>("/Search", tboBody);
 }
 
 // ─── Fare Quote ───────────────────────────────────────────────────────────────
@@ -169,7 +184,7 @@ export async function fareQuote(
   traceId: string,
   resultIndex: string
 ): Promise<TBOFareQuoteResponse> {
-  return tboAirFetch<TBOFareQuoteResponse>("/FareQuote/", {
+  return tboAirFetch<TBOFareQuoteResponse>("/FareQuote", {
     TraceId: traceId,
     ResultIndex: resultIndex,
   });
@@ -181,7 +196,7 @@ export async function fareRule(
   traceId: string,
   resultIndex: string
 ): Promise<TBOFareRuleResponse> {
-  return tboAirFetch<TBOFareRuleResponse>("/FareRule/", {
+  return tboAirFetch<TBOFareRuleResponse>("/FareRule", {
     TraceId: traceId,
     ResultIndex: resultIndex,
   });
@@ -192,7 +207,7 @@ export async function fareRule(
 export async function bookFlight(
   req: TBOBookFlightRequest
 ): Promise<TBOBookFlightResponse> {
-  return tboAirFetch<TBOBookFlightResponse>("/Booking/Book", req);
+  return tboAirFetch<TBOBookFlightResponse>("/Book", req);
 }
 
 // ─── SSR (Special Service Requests) ──────────────────────────────────────────
@@ -203,7 +218,7 @@ export async function getSSR(
   traceId: string,
   resultIndex: string
 ): Promise<unknown> {
-  return tboAirFetch("/SSR/", { TraceId: traceId, ResultIndex: resultIndex });
+  return tboAirFetch("/SSR", { TraceId: traceId, ResultIndex: resultIndex });
 }
 
 // ─── Issue Ticket — LCC ───────────────────────────────────────────────────────
@@ -216,7 +231,7 @@ export async function issueTicketLCC(
   passengers: TBOPassenger[],
   fare: TBOFare
 ): Promise<TBOTicketResponse> {
-  return tboAirFetch<TBOTicketResponse>("/Booking/Ticket", {
+  return tboAirFetch<TBOTicketResponse>("/Ticket", {
     TraceId: traceId,
     ResultIndex: resultIndex,
     Passengers: passengers,
@@ -233,7 +248,7 @@ export async function issueTicketGDS(
   pnr: string,
   bookingId: number
 ): Promise<TBOTicketResponse> {
-  return tboAirFetch<TBOTicketResponse>("/Booking/Ticket", {
+  return tboAirFetch<TBOTicketResponse>("/Ticket", {
     TraceId: traceId,
     PNR: pnr,
     BookingId: bookingId,
@@ -247,7 +262,7 @@ export async function getBookingDetails(
   bookingId: number,
   pnr?: string
 ): Promise<unknown> {
-  return tboAirFetch("/Booking/GetBookingDetails", {
+  return tboAirFetch("/GetBookingDetails", {
     BookingId: bookingId,
     ...(pnr ? { PNR: pnr } : {}),
   });
@@ -260,7 +275,7 @@ export async function releasePNR(
   bookingId: number,
   source: number
 ): Promise<unknown> {
-  return tboAirFetch("/Booking/ReleasePNRRequest", {
+  return tboAirFetch("/ReleasePNRRequest", {
     BookingId: bookingId,
     Source: source,
   });
@@ -273,7 +288,7 @@ export async function releasePNR(
 export async function getCancellationCharges(
   bookingId: number
 ): Promise<unknown> {
-  return tboAirFetch("/Booking/GetCancellationCharges", {
+  return tboAirFetch("/GetCancellationCharges", {
     BookingId: bookingId,
     RequestType: 1,   // 1 = Cancellation
     BookingMode: 5,
@@ -290,7 +305,7 @@ export async function cancelBooking(
   sectors?: unknown[],
   ticketIds?: unknown[]
 ): Promise<unknown> {
-  return tboAirFetch("/Booking/SendChangeRequest", {
+  return tboAirFetch("/SendChangeRequest", {
     BookingId: bookingId,
     RequestType: 1,
     CancellationType: 3,
@@ -307,7 +322,7 @@ export async function reissueTicket(
   bookingId: number,
   remarks: string
 ): Promise<unknown> {
-  return tboAirFetch("/Booking/SendChangeRequest", {
+  return tboAirFetch("/SendChangeRequest", {
     BookingId: bookingId,
     RequestType: 3,
     CancellationType: 3,
@@ -322,7 +337,7 @@ export async function getAncillary(
   traceId: string,
   resultIndex: string
 ): Promise<unknown> {
-  return tboAirFetch("/Booking/GetAncillary", {
+  return tboAirFetch("/GetAncillary", {
     TraceId: traceId,
     ResultIndex: resultIndex,
   });

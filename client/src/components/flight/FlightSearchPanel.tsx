@@ -22,6 +22,10 @@ import {
 import { FlightResultsList, type FlightResult } from "./FlightResultsList";
 import { FlightDetailCard } from "./FlightDetailCard";
 import { FlightBookingConfirmCard } from "./FlightBookingConfirmCard";
+import {
+  generateMockFlights,
+  isMockFlightResult,
+} from "@/lib/uat-mock-generators";
 
 // Common airports — covers most Indian and international group travel routes
 const AIRPORTS = [
@@ -194,6 +198,7 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
   // State that persists across phases
   const [traceId, setTraceId] = useState("");
   const [flightResults, setFlightResults] = useState<FlightResult[]>([]);
+  const [isLiveResult, setIsLiveResult] = useState(false);
   const [selectedFlight, setSelectedFlight] = useState<FlightResult | null>(null);
   const [fareQuoteData, setFareQuoteData] = useState<any>(null);
     const [commissionType, setCommissionType] = useState<CommissionType>("amount");
@@ -237,9 +242,20 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
       const tid: string = result?.Response?.TraceId ?? "";
       // Results is FlightResult[][] — take the first flight from each group
       const rawResults: any[][] = result?.Response?.Results ?? [];
-      const results: FlightResult[] = rawResults
+      let results: FlightResult[] = rawResults
         .map((group: any[]) => group[0])
         .filter(Boolean);
+
+      const gotLive = results.length > 0;
+      if (results.length === 0) {
+        results = generateMockFlights({
+          origin: searchParams.origin,
+          destination: searchParams.destination,
+          departureDate: searchParams.departureDate,
+        });
+      }
+
+      setIsLiveResult(gotLive);
       setTraceId(tid);
       setFlightResults(results);
       setPhase("results");
@@ -266,8 +282,9 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
     if (!selectedFlight) return;
     setIsConfirming(true);
     try {
+      const isMockFlight = isMockFlightResult(selectedFlight.ResultIndex);
       const fare = fareQuoteData?.Fare ?? selectedFlight.Fare;
-      const isLCC: boolean = (selectedFlight as any).IsLCC === true;
+      const isLCC: boolean = isMockFlight ? true : (selectedFlight as any).IsLCC === true;
 
       // Placeholder passenger — real guest details collected via guest portal
       const buildPassengers = (count: number, isLead = true) =>
@@ -299,7 +316,10 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
       let bookingId: number | undefined;
       let ticketResult: any;
 
-      if (isLCC) {
+      if (isMockFlight) {
+        pnr = `MOCK-${Date.now().toString().slice(-6)}`;
+        ticketResult = { status: "mock-ticketed", source: "uat-fallback" };
+      } else if (isLCC) {
         // LCC flow: Ticket directly (no Book step)
         ticketResult = await issueTicket.mutateAsync({
           traceId,
@@ -340,6 +360,7 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
         traceId,
         resultIndex: selectedFlight.ResultIndex,
         isLCC,
+        isMockFallback: isMockFlight,
         pnr,
         bookingId,
         ticketResponse: ticketResult,
@@ -512,13 +533,23 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            {flightResults.length} flights found
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm text-muted-foreground">{flightResults.length} flights found</p>
+            {isLiveResult ? (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-300">Live — TBO</span>
+            ) : (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300">Demo Fallback</span>
+            )}
+          </div>
           <Button variant="ghost" size="sm" onClick={() => setPhase("search")}>
             ← Modify search
           </Button>
         </div>
+        {!isLiveResult && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+            TBO returned no inventory for this route. Showing demo options — booking will be saved as a placeholder.
+          </p>
+        )}
         <FlightResultsList
           traceId={traceId}
           results={flightResults}
@@ -566,13 +597,12 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
             <div className="space-y-1">
               <Label>Commission Type</Label>
               <select
-                className="flex h-10 w-full rounded-md border border-input bg-popover text-popover-foreground px-3 py-2 text-sm"
-                style={{ backgroundColor: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}
+                className="flex h-10 w-full rounded-md border border-input bg-white text-gray-900 px-3 py-2 text-sm"
                 value={commissionType}
                 onChange={(e) => setCommissionType(e.target.value as CommissionType)}
               >
-                <option value="amount" style={{ backgroundColor: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}>Amount (₹)</option>
-                <option value="percentage" style={{ backgroundColor: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}>Percentage (%)</option>
+                <option value="amount">Amount (₹)</option>
+                <option value="percentage">Percentage (%)</option>
               </select>
             </div>
             <div className="space-y-1">

@@ -11,13 +11,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { 
-  Copy, 
-  Check, 
-  Link as LinkIcon, 
-  Mail, 
+import {
+  Copy,
+  Check,
+  Link as LinkIcon,
+  Mail,
   ExternalLink,
-  QrCode
+  QrCode,
+  MessageCircle
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import QRCode from "qrcode";
@@ -236,7 +237,20 @@ export function GuestLinkManager({ guest }: GuestLinkManagerProps) {
                 {showQR ? 'Hide QR' : 'Show QR Code'}
               </Button>
               <Button
-                className="gap-2 col-span-2 bg-primary"
+                variant="outline"
+                className="gap-2"
+                onClick={() => {
+                  const text = encodeURIComponent(
+                    `Hi ${guest.name}, you're invited! 🎉\n\nAccess your personalized event portal here:\n${guestLink}\n\nYour booking reference: ${guest.bookingRef}\n\nWe look forward to seeing you!`
+                  );
+                  window.open(`https://wa.me/?text=${text}`, "_blank");
+                }}
+              >
+                <MessageCircle className="w-4 h-4 text-green-600" />
+                WhatsApp
+              </Button>
+              <Button
+                className="gap-2 bg-primary"
                 onClick={sendEmail}
               >
                 <Mail className="w-4 h-4" />

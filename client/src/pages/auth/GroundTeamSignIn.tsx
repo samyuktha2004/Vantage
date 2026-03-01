@@ -7,14 +7,16 @@
  */
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { motion } from "framer-motion";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { Navigation } from "@/components/Navigation";
 
 const signInSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -71,81 +73,84 @@ export default function GroundTeamSignIn() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
-      <div className="w-full max-w-sm space-y-6">
-        <div className="text-center">
-          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-            <ShieldCheck className="w-6 h-6 text-primary" />
+    <div className="min-h-screen bg-background flex flex-col">
+      <Navigation showBack={false} showHome={true} />
+      <div className="flex-1 flex items-center justify-center px-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md"
+        >
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-bold text-primary">Ground Team Sign In</h1>
+            <p className="text-sm text-muted-foreground">For on-site event staff only</p>
           </div>
-          <h1 className="text-2xl font-bold text-primary">Ground Team Sign In</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            For on-site event staff only
-          </p>
-        </div>
 
-        <div className="bg-card border rounded-xl p-6 shadow-sm">
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="staff@example.com"
-                        autoComplete="email"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+          <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-border/60 bg-muted/20 p-1">
+            <button
+              type="button"
+              className="h-9 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+              onClick={() => navigate("/auth/agent/signin")}
+            >
+              Agent
+            </button>
+            <button
+              type="button"
+              className="h-9 rounded-lg bg-primary text-primary-foreground text-sm font-medium"
+              aria-current="page"
+            >
+              Ground Team
+            </button>
+          </div>
 
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="••••••••"
-                        autoComplete="current-password"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+          <div className="bg-card border rounded-2xl p-8 shadow-lg">
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input placeholder="staff@example.com" autoComplete="email" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              {error && (
-                <p className="text-sm text-destructive text-center">{error}</p>
-              )}
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="••••••••" autoComplete="current-password" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Signing In…
-                  </>
-                ) : (
-                  "Sign In"
-                )}
-              </Button>
-            </form>
-          </Form>
-        </div>
+                {error && <div className="text-sm text-red-500 text-center">{error}</div>}
 
-        <div className="text-center">
-          <a href={user ? "/dashboard" : "/"} className="text-sm text-muted-foreground hover:text-primary">
-            ← Back to Home
-          </a>
-        </div>
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Signing In…
+                    </>
+                  ) : (
+                    "Sign In"
+                  )}
+                </Button>
+              </form>
+            </Form>
+          </div>
+
+        </motion.div>
       </div>
     </div>
   );

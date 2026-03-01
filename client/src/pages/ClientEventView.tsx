@@ -101,6 +101,7 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
   // Budget edit state per label
   const [budgetEdits, setBudgetEdits] = useState<Record<number, number>>({});
   const [savingBudget, setSavingBudget] = useState<number | null>(null);
+  const [autoPilotEnabled, setAutoPilotEnabled] = useState<Record<number, boolean>>({});
   const labelsQueryKey = [api.labels.list.path, eventId] as const;
 
   const handleSaveBudget = async (labelId: number) => {
@@ -637,6 +638,20 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
                         {savingBudget === label.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
                       </Button>
                     </div>
+                  </div>
+                  {/* Budget Auto-Pilot */}
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/40">
+                    <Switch
+                      id={`autopilot-${label.id}`}
+                      checked={autoPilotEnabled[label.id] ?? true}
+                      onCheckedChange={(v) => setAutoPilotEnabled({ ...autoPilotEnabled, [label.id]: v })}
+                    />
+                    <label htmlFor={`autopilot-${label.id}`} className="text-xs text-muted-foreground cursor-pointer flex-1">
+                      Budget Auto-Pilot — instantly approve guest requests within the budget limit
+                    </label>
+                    {(autoPilotEnabled[label.id] ?? true) && (
+                      <Badge className="bg-green-100 text-green-700 text-xs border-green-200 shrink-0">Auto-Pilot: ON</Badge>
+                    )}
                   </div>
                 </CardHeader>
                 {labelPerks.length > 0 && (

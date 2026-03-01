@@ -37,8 +37,11 @@ import {
   UserPlus,
   Plane,
   UserX,
+  LayoutDashboard,
+  LogOut,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { Html5Qrcode } from "html5-qrcode";
 
 function flightStatusBorderClass(status?: string | null): string {
@@ -102,6 +105,7 @@ export default function CheckInDashboard() {
   const [match, params] = useRoute("/groundteam/:eventId/checkin");
   const [, navigate] = useLocation();
   const eventId = params?.eventId ?? "";
+  const { user, logout, isLoggingOut } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -118,6 +122,18 @@ export default function CheckInDashboard() {
   const [walkInEmail, setWalkInEmail] = useState("");
   const [walkInPhone, setWalkInPhone] = useState("");
   const [walkInMeal, setWalkInMeal] = useState("standard");
+
+  const handleLogout = () => {
+    logout();
+  };
+
+  const handleDashboardClick = () => {
+    if (user?.role === "groundTeam") {
+      navigate(`/groundteam/${eventId}/checkin`);
+      return;
+    }
+    navigate("/dashboard");
+  };
 
   const { data: stats, refetch: refetchStats } = useQuery({
     queryKey: ["checkin-stats", eventId],
@@ -328,6 +344,23 @@ export default function CheckInDashboard() {
                 onClick={() => navigate(`/groundteam/${eventId}/rooming`)}
               >
                 <MapPin className="w-4 h-4 mr-1" /> Rooms
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+                onClick={handleDashboardClick}
+              >
+                <LayoutDashboard className="w-4 h-4 mr-1" /> Dashboard
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+                disabled={isLoggingOut}
+                onClick={handleLogout}
+              >
+                <LogOut className="w-4 h-4 mr-1" /> Logout
               </Button>
             </div>
           </div>

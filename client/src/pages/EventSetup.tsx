@@ -1,3 +1,11 @@
+interface HotelBookingItem {
+  id: number;
+  hotelName: string;
+  numberOfRooms: number;
+  checkInDate?: string;
+  checkOutDate?: string;
+  tboHotelData?: unknown;
+}
 import { useState, useEffect } from "react";
 import { useLocation, useParams } from "wouter";
 import { useForm } from "react-hook-form";
@@ -40,6 +48,16 @@ type HotelBookingFormValues = z.infer<typeof hotelBookingSchema>;
 
 type HotelMode = "tbo" | "manual";
 type CommissionType = "amount" | "percentage";
+type HotelBookingSource = "tbo" | "mock" | "manual" | null;
+
+interface HotelBookingItem {
+  id: number;
+  hotelName: string;
+  numberOfRooms: number;
+  checkInDate?: string;
+  checkOutDate?: string;
+  tboHotelData?: unknown;
+}
 
 export default function EventSetup() {
   const { id } = useParams();
@@ -57,6 +75,8 @@ export default function EventSetup() {
   // TBO vs Manual mode for hotel step
   const [hotelMode, setHotelMode] = useState<HotelMode>("tbo");
   const [hotelBooked, setHotelBooked] = useState(false);
+  const [hotelBookingSource, setHotelBookingSource] = useState<HotelBookingSource>(null);
+  const [hotelBookings, setHotelBookings] = useState<HotelBookingItem[]>([]);
   const [hotelBaseRate, setHotelBaseRate] = useState(0);
   const [hotelCommissionType, setHotelCommissionType] = useState<CommissionType>("amount");
   const [hotelCommissionValue, setHotelCommissionValue] = useState(0);
@@ -91,6 +111,35 @@ export default function EventSetup() {
       ? Math.round((base * Math.max(commissionValue, 0)) / 100)
       : Math.max(commissionValue, 0);
     return Math.max(base + commission, 0);
+  };
+
+  const detectMockHotelBooking = (tboHotelData: unknown): boolean => {
+    if (!tboHotelData) return false;
+    if (typeof tboHotelData === "object") {
+      return Boolean((tboHotelData as any)?.isMockFallback);
+    }
+    if (typeof tboHotelData === "string") {
+      try {
+        const parsed = JSON.parse(tboHotelData);
+        return Boolean(parsed?.isMockFallback);
+      } catch {
+        return tboHotelData.includes('"isMockFallback":true');
+      }
+    }
+    return false;
+  };
+
+  const parseTboHotelData = (tboHotelData: unknown): any => {
+    if (!tboHotelData) return null;
+    if (typeof tboHotelData === "object") return tboHotelData;
+    if (typeof tboHotelData === "string") {
+      try {
+        return JSON.parse(tboHotelData);
+      } catch {
+        return null;
+      }
+    }
+    return null;
   };
 
   const clientForm = useForm<ClientDetailsFormValues>({
@@ -154,7 +203,15 @@ export default function EventSetup() {
       if (hotelRes.ok) {
         const bookings = await hotelRes.json();
         if (Array.isArray(bookings) && bookings.length > 0) {
+                    setHotelBookings(bookings);
+                    setHotelBookings([]);
+                    setHotelBooked(false);
+                    setHotelBookingSource(null);
+          const latest = bookings[bookings.length - 1];
+          const hasTboData = Boolean(latest?.tboHotelData);
+          const isMockFallback = detectMockHotelBooking(latest?.tboHotelData);
           setHotelBooked(true);
+          setHotelBookingSource(isMockFallback ? "mock" : hasTboData ? "tbo" : "manual");
         }
       }
 
@@ -270,7 +327,15 @@ export default function EventSetup() {
         title: "Success",
         description: "Hotel booking saved successfully"
       });
-      setCurrentStep(3);
+      setHotelBooked(true);
+      setHotelBookingSource("manual");
+      hotelForm.reset({
+        hotelName: "",
+        numberOfRooms: 1,
+        checkInDate: "",
+        checkOutDate: "",
+      });
+      await fetchEventData();
     } catch (error: any) {
       console.error("Error saving hotel booking:", error);
       toast({
@@ -588,12 +653,16 @@ export default function EventSetup() {
                 </div>
                 {hotelBooked && (
                   <Badge className="bg-green-100 text-green-700 border-green-300 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Booked via TBO
+                    <CheckCircle2 className="w-3 h-3" />
+                    {hotelBookingSource === "mock"
+                      ? "Confirmed via UAT fallback"
+                      : hotelBookingSource === "manual"
+                      ? "Booked manually"
+                      : "Booked via TBO"}
                   </Badge>
                 )}
               </div>
 
-              {/* Mode tabs */}
               <div className="flex gap-2 mt-4">
                 <button
                   onClick={() => setHotelMode("tbo")}
@@ -617,26 +686,56 @@ export default function EventSetup() {
                 </button>
               </div>
             </CardHeader>
+
             <CardContent>
-              {hotelMode === "tbo" && !hotelBooked && (
-                <HotelSearchPanel
-                  eventId={Number(id)}
-                  onBooked={() => {
-                    setHotelBooked(true);
-                    setCurrentStep(3);
-                  }}
-                />
+              {hotelBookings.length > 0 && (
+                <div className="mb-4 rounded-lg border bg-muted/20 p-3 space-y-2">
+                  <p className="text-sm font-medium">Booked hotel blocks ({hotelBookings.length})</p>
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {hotelBookings.map((booking) => {
+                      const parsed = parseTboHotelData(booking.tboHotelData);
+                      const roomType = parsed?.roomTypeName || parsed?.originalRoom?.RoomTypeName;
+                      const isMock = Boolean(parsed?.isMockFallback);
+                      const sourceLabel = parsed ? (isMock ? "UAT fallback" : "TBO") : "Manual";
+                      return (
+                        <div key={booking.id} className="rounded-md border bg-background px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-medium truncate">{booking.hotelName}</p>
+                            <Badge variant="outline" className="text-xs">{sourceLabel}</Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {booking.numberOfRooms} rooms{roomType ? ` • ${roomType}` : ""}
+                            {booking.checkInDate && booking.checkOutDate
+                              ? ` • ${new Date(booking.checkInDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} - ${new Date(booking.checkOutDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
+                              : ""}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
 
-              {hotelMode === "tbo" && hotelBooked && (
-                <div className="text-center py-6 space-y-3">
-                  <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
-                  <p className="font-semibold text-green-700">Hotel blocked successfully via TBO</p>
-                  <p className="text-sm text-muted-foreground">Rooms are rate-held. Proceed to travel setup.</p>
-                  <Button onClick={() => setCurrentStep(3)}>
-                    Next: Travel Options <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </div>
+              {hotelMode === "tbo" && (
+                <>
+                  <HotelSearchPanel
+                    eventId={Number(id)}
+                    onBooked={(booking) => {
+                      const isMockFallback = Boolean((booking as any)?.tboHotelData?.isMockFallback);
+                      setHotelBooked(true);
+                      setHotelBookingSource(isMockFallback ? "mock" : "tbo");
+                      fetchEventData();
+                    }}
+                  />
+                  <div className="flex justify-between mt-4 pt-4 border-t">
+                    <Button type="button" variant="outline" onClick={() => setCurrentStep(1)}>
+                      <ArrowLeft className="w-4 h-4 mr-2" /> Back
+                    </Button>
+                    <Button type="button" onClick={() => setCurrentStep(3)}>
+                      Next: Travel Options <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </div>
+                </>
               )}
 
               {hotelMode === "manual" && (
@@ -754,23 +853,17 @@ export default function EventSetup() {
                       <Button type="button" variant="outline" onClick={() => setCurrentStep(1)}>
                         <ArrowLeft className="w-4 h-4 mr-2" /> Back
                       </Button>
-                      <Button type="submit" disabled={isSubmitting}>
-                        {isSubmitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</> : <>Next: Travel Options <ArrowRight className="w-4 h-4 ml-2" /></>}
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" onClick={() => setCurrentStep(3)}>
+                          Next: Travel Options <ArrowRight className="w-4 h-4 ml-2" />
+                        </Button>
+                        <Button type="submit" disabled={isSubmitting}>
+                          {isSubmitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</> : <>Save Hotel Booking</>}
+                        </Button>
+                      </div>
                     </div>
                   </form>
                 </Form>
-              )}
-
-              {hotelMode === "tbo" && !hotelBooked && (
-                <div className="flex justify-between mt-4 pt-4 border-t">
-                  <Button type="button" variant="outline" onClick={() => setCurrentStep(1)}>
-                    <ArrowLeft className="w-4 h-4 mr-2" /> Back
-                  </Button>
-                  <Button variant="ghost" onClick={() => setCurrentStep(3)}>
-                    Skip hotel for now
-                  </Button>
-                </div>
               )}
             </CardContent>
           </Card>

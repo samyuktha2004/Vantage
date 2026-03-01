@@ -71,6 +71,23 @@ export default function AgentSignUp() {
           <p className="text-muted-foreground">Create your event management account</p>
         </div>
 
+        <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-border/60 bg-muted/20 p-1">
+          <button
+            type="button"
+            className="h-9 rounded-lg bg-primary text-primary-foreground text-sm font-medium"
+            aria-current="page"
+          >
+            Agent Sign Up
+          </button>
+          <button
+            type="button"
+            className="h-9 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+            onClick={() => navigate("/auth/groundteam/signin")}
+          >
+            Ground Team Sign In
+          </button>
+        </div>
+
         <div className="bg-white border border-border rounded-2xl p-8 shadow-lg">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">

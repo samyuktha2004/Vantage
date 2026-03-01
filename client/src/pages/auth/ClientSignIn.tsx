@@ -71,9 +71,9 @@ export default function ClientSignIn() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-primary mb-2">Client Sign In</h1>
-          <p className="text-muted-foreground">Access your event details</p>
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-bold text-primary mb-1">Client Sign In</h1>
+          <p className="text-sm text-muted-foreground">Access your event details</p>
         </div>
 
         <div className="bg-white border border-border rounded-2xl p-8 shadow-lg">

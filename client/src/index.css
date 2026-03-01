@@ -32,6 +32,12 @@
   --destructive: 0 60% 60%;
   --destructive-foreground: 210 40% 98%;
 
+  /* Popover & Card: Solid white surface (missing vars cause transparent comboboxes) */
+  --popover: 0 0% 100%;
+  --popover-foreground: 215 25% 27%;
+  --card: 0 0% 100%;
+  --card-foreground: 215 25% 27%;
+
   /* Border & Input: Subtle slate */
   --border: 214 20% 90%;
   --input: 214 20% 90%;

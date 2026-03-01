@@ -39,6 +39,7 @@ export default function GuestItinerary({ token }: { token: string }) {
 
   // Check for time conflicts and return conflicting events
   const getConflicts = (eventToCheck: any) => {
+    if (eventToCheck?.isMandatory) return [];
     if (!guestData.itinerary) return [];
     
     const eventStart = new Date(eventToCheck.startTime);

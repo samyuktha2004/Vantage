@@ -1,24 +1,24 @@
-import { Hotel, CheckCircle2, Loader2, CalendarDays, Users } from "lucide-react";
+import { Hotel, CheckCircle2, Loader2, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import type { HotelResult, RoomOption } from "./HotelResultsList";
+import type { HotelResult } from "./HotelResultsList";
+import type { RoomSelection } from "./HotelRoomSelector";
 import { format } from "date-fns";
 
 interface Props {
   hotel: HotelResult;
-  room: RoomOption;
+  roomSelections: RoomSelection[];
   checkIn: string;
   checkOut: string;
-  numberOfRooms: number;
   onConfirm: () => void;
   onBack: () => void;
   isLoading: boolean;
 }
 
 export function HotelBookingConfirmCard({
-  hotel, room, checkIn, checkOut, numberOfRooms, onConfirm, onBack, isLoading,
+  hotel, roomSelections, checkIn, checkOut, onConfirm, onBack, isLoading,
 }: Props) {
   const nights =
     checkIn && checkOut
@@ -28,14 +28,19 @@ export function HotelBookingConfirmCard({
         )
       : 1;
 
-  const totalCost = room.Price.RoomPrice * numberOfRooms * nights;
+  const currency = roomSelections[0]?.room.Price.CurrencyCode ?? "INR";
+  const totalCost = roomSelections.reduce(
+    (sum, { room, quantity }) => sum + room.Price.RoomPrice * quantity * nights,
+    0
+  );
+  const totalRooms = roomSelections.reduce((s, x) => s + x.quantity, 0);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-lg">Confirm Hotel Booking</h3>
         <Button variant="ghost" size="sm" onClick={onBack}>
-          ← Change room
+          ← Change rooms
         </Button>
       </div>
 
@@ -47,15 +52,8 @@ export function HotelBookingConfirmCard({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          {/* Dates */}
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <p className="text-muted-foreground text-xs">Room Type</p>
-              <p className="font-medium">{room.RoomTypeName}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs">Meal Plan</p>
-              <p className="font-medium">{room.MealType ?? "Room Only"}</p>
-            </div>
             <div>
               <p className="text-muted-foreground text-xs flex items-center gap-1">
                 <CalendarDays className="w-3 h-3" /> Check-In
@@ -68,35 +66,47 @@ export function HotelBookingConfirmCard({
               </p>
               <p className="font-medium">{checkOut ? format(new Date(checkOut), "MMM d, yyyy") : "—"}</p>
             </div>
-            <div>
-              <p className="text-muted-foreground text-xs flex items-center gap-1">
-                <Users className="w-3 h-3" /> Rooms Blocked
-              </p>
-              <p className="font-medium">{numberOfRooms} rooms × {nights} nights</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs">Cancellation</p>
-              <Badge
-                variant={room.IsRefundable ? "outline" : "secondary"}
-                className={room.IsRefundable ? "text-green-700 border-green-300" : ""}
-              >
-                {room.IsRefundable ? "Refundable" : "Non-refundable"}
-              </Badge>
-            </div>
           </div>
 
           <Separator />
 
+          {/* Room breakdown */}
+          <div className="space-y-2">
+            {roomSelections.map(({ room, quantity }) => (
+              <div key={room.BookingCode} className="flex items-start justify-between text-sm">
+                <div>
+                  <p className="font-medium">{room.RoomTypeName}</p>
+                  <p className="text-xs text-muted-foreground">{room.MealType ?? "Room Only"}</p>
+                  <Badge
+                    variant={room.IsRefundable ? "outline" : "secondary"}
+                    className={`mt-1 text-xs ${room.IsRefundable ? "text-green-700 border-green-300" : ""}`}
+                  >
+                    {room.IsRefundable ? "Refundable" : "Non-refundable"}
+                  </Badge>
+                </div>
+                <div className="text-right shrink-0 ml-4">
+                  <p className="font-semibold">{quantity} room{quantity !== 1 ? "s" : ""}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {currency} {room.Price.RoomPrice.toLocaleString()} × {quantity} × {nights}n
+                  </p>
+                  <p className="font-bold text-primary text-sm">
+                    {currency} {(room.Price.RoomPrice * quantity * nights).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Separator />
+
+          {/* Total */}
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-muted-foreground">Estimated Total (group rate)</p>
+              <p className="text-xs text-muted-foreground">Estimated Total — {totalRooms} rooms, {nights} nights</p>
               <p className="text-lg font-bold text-primary">
-                {room.Price.CurrencyCode} {totalCost.toLocaleString()}
+                {currency} {totalCost.toLocaleString()}
               </p>
             </div>
-            <p className="text-xs text-muted-foreground text-right">
-              {room.Price.CurrencyCode} {room.Price.RoomPrice.toLocaleString()} × {numberOfRooms} rooms × {nights} nights
-            </p>
           </div>
         </CardContent>
       </Card>
@@ -110,7 +120,7 @@ export function HotelBookingConfirmCard({
         {isLoading ? (
           <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Confirming booking…</>
         ) : (
-          <><CheckCircle2 className="w-4 h-4 mr-2" /> Confirm & Block Rooms</>
+          <><CheckCircle2 className="w-4 h-4 mr-2" /> Confirm & Block {totalRooms} Room{totalRooms !== 1 ? "s" : ""}</>
         )}
       </Button>
     </div>

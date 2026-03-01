@@ -7,8 +7,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Loader2, Users, Utensils, Printer, Plane, Train, Bus, UserPlus, Download } from "lucide-react";
+import { ArrowLeft, Loader2, Users, Utensils, Printer, Plane, Train, Bus, UserPlus, Download, LayoutDashboard, LogOut } from "lucide-react";
 import { exportManifestToExcel } from "@/lib/excelParser";
+import { useAuth } from "@/hooks/use-auth";
 
 async function fetchGuests(eventId: string) {
   const res = await fetch(`/api/events/${eventId}/guests`, { credentials: "include" });
@@ -26,6 +27,19 @@ export default function RoomingList() {
   const [match, params] = useRoute("/groundteam/:eventId/rooming");
   const [, navigate] = useLocation();
   const eventId = params?.eventId ?? "";
+  const { user, logout, isLoggingOut } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+  };
+
+  const handleDashboardClick = () => {
+    if (user?.role === "groundTeam") {
+      navigate(`/groundteam/${eventId}/checkin`);
+      return;
+    }
+    navigate("/dashboard");
+  };
 
   const { data: guests = [], isLoading } = useQuery({
     queryKey: ["guests-rooming", eventId],
@@ -58,6 +72,14 @@ export default function RoomingList() {
             variant="ghost"
             size="sm"
             className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+            onClick={handleDashboardClick}
+          >
+            <LayoutDashboard className="w-4 h-4 mr-1" /> Dashboard
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
             onClick={() => exportManifestToExcel(confirmed, "Rooming List")}
           >
             <Download className="w-4 h-4 mr-1" /> Export
@@ -69,6 +91,15 @@ export default function RoomingList() {
             onClick={() => window.print()}
           >
             <Printer className="w-4 h-4 mr-1" /> Print
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+            disabled={isLoggingOut}
+            onClick={handleLogout}
+          >
+            <LogOut className="w-4 h-4 mr-1" /> Logout
           </Button>
         </div>
       </div>
