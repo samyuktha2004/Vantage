@@ -16,7 +16,7 @@ import { useHotelBookings } from "@/hooks/use-hotel-bookings";
 import { useLabels } from "@/hooks/use-labels";
 import { usePerks } from "@/hooks/use-perks";
 import { useRequests, useUpdateRequest } from "@/hooks/use-requests";
-import { useGuests } from "@/hooks/use-guests";
+import { useGuests, useGuestFamily } from "@/hooks/use-guests";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -69,9 +69,25 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
   const { data: labels } = useLabels(eventId);
   const { data: perks } = usePerks(eventId);
   const { data: guests } = useGuests(eventId);
+  const [expandedGuests, setExpandedGuests] = useState<number[]>([]);
   const { data: requests } = useRequests(eventId);
   const updateRequest = useUpdateRequest();
   const { data: hotelBookings } = useHotelBookings(eventId);
+
+  function GuestFamilyList({ guestId }: { guestId: number }) {
+    const { data: family } = useGuestFamily(guestId);
+    if (!family || family.length === 0) return <p className="text-sm text-muted-foreground mt-2">No family members registered.</p>;
+    return (
+      <div className="mt-2">
+        <p className="font-medium text-sm">Family Members</p>
+        <ul className="text-sm space-y-1 mt-1">
+          {family.map((m: any) => (
+            <li key={m.id}>{m.name} · {m.relationship} {m.age ? `· ${m.age}` : ''}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
 
   const { data: travelOptions } = useQuery({
     queryKey: ["travel-options", eventId],
@@ -271,7 +287,7 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
     setUploading(true);
     try {
       for (const guest of pendingImport) {
-        await fetch(`/api/events/${eventId}/guests`, {
+        const res = await fetch(`/api/events/${eventId}/guests`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -285,6 +301,21 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
             specialRequests: guest.specialRequests,
           }),
         });
+
+        if (!res.ok) {
+          let bodyMsg = '';
+          try {
+            const json = await res.json();
+            bodyMsg = json?.message || JSON.stringify(json);
+          } catch (e) {
+            try {
+              bodyMsg = await res.text();
+            } catch (e) {
+              bodyMsg = '';
+            }
+          }
+          throw new Error(`Import failed for ${guest.name || '<unknown>'}: ${res.status} ${res.statusText}${bodyMsg ? ` - ${bodyMsg}` : ''}`);
+        }
       }
       toast({ title: "Guests imported!", description: `${pendingImport.length} guests added` });
       setPendingImport([]);
@@ -453,25 +484,48 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
               <div key={status} className="p-4">
                 <p className="text-sm font-medium capitalize mb-2">{status} · {(allGuests ?? []).filter(g => (g.status ?? 'pending') === status).length}</p>
                 <div className="grid gap-2">
-                  {(allGuests ?? []).filter(g => (g.status ?? 'pending') === status).slice(0, 50).map((g: any) => (
-                    <div key={g.id} className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium">{g.name}</p>
-                        <p className="text-xs text-muted-foreground">{g.email ?? g.phone ?? g.bookingRef}</p>
+                  {(allGuests ?? []).filter(g => (g.status ?? 'pending') === status).slice(0, 50).map((g: any) => {
+                    const isExpanded = expandedGuests.includes(g.id);
+                    return (
+                      <div key={g.id} className="py-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium">{g.name}</p>
+                            <p className="text-xs text-muted-foreground">{g.email ?? g.phone ?? g.bookingRef}</p>
+                            <div className="flex gap-2 mt-1">
+                              <Badge className="text-xs">{g.registrationSource ?? 'invited'}</Badge>
+                              <Badge className="text-xs">Seats: {g.confirmedSeats ?? 0}/{g.allocatedSeats ?? 1}</Badge>
+                              {g.mealPreference && <Badge className="text-xs">{g.mealPreference}</Badge>}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" variant="ghost" onClick={() => {
+                              const link = `${process.env.APP_URL || window.location.origin}/guest/${g.accessToken ?? g.bookingRef}`;
+                              navigator.clipboard.writeText(link).then(() => toast({ title: 'Link copied', description: link }));
+                            }}>Copy Link</Button>
+                            <Button size="sm" onClick={() => {
+                              const link = `${process.env.APP_URL || window.location.origin}/guest/${g.accessToken ?? g.bookingRef}`;
+                              const wa = `https://wa.me/?text=${encodeURIComponent((g.name ? `Hi ${g.name}, ` : '') + 'Here is your event link: ' + link)}`;
+                              window.open(wa, '_blank');
+                            }} variant="outline">WhatsApp</Button>
+                            <Button size="sm" onClick={() => {
+                              setExpandedGuests((s) => s.includes(g.id) ? s.filter(x => x !== g.id) : [...s, g.id]);
+                            }}>{isExpanded ? 'Hide' : 'Details'}</Button>
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="mt-2 ml-2 p-3 bg-muted/10 rounded">
+                            <p className="text-sm"><strong>Status:</strong> {g.status ?? 'pending'}</p>
+                            <p className="text-sm"><strong>Booking Ref:</strong> {g.bookingRef}</p>
+                            <p className="text-sm"><strong>Access Token:</strong> {g.accessToken}</p>
+                            <GuestFamilyList guestId={g.id} />
+                          </div>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button size="sm" variant="ghost" onClick={() => {
-                          const link = `${process.env.APP_URL || window.location.origin}/guest/${g.accessToken ?? g.bookingRef}`;
-                          navigator.clipboard.writeText(link).then(() => toast({ title: 'Link copied', description: link }));
-                        }}>Copy Link</Button>
-                        <Button size="sm" onClick={() => {
-                          const link = `${process.env.APP_URL || window.location.origin}/guest/${g.accessToken ?? g.bookingRef}`;
-                          const wa = `https://wa.me/?text=${encodeURIComponent((g.name ? `Hi ${g.name}, ` : '') + 'Here is your event link: ' + link)}`;
-                          window.open(wa, '_blank');
-                        }} variant="outline">WhatsApp</Button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}

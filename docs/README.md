@@ -6,6 +6,7 @@ This folder has one canonical doc per topic to avoid duplication.
 
 - [SUBMISSION.md](./SUBMISSION.md) — hackathon-facing summary, judging context, and demo scope.
 - [QUICKSTART.md](./QUICKSTART.md) — fastest local setup path.
+- [GITHUB_LOCAL_SETUP.md](./GITHUB_LOCAL_SETUP.md) — first-time setup from GitHub clone/import to localhost.
 - [PROGRESS.md](./PROGRESS.md) — current implementation status and known issues.
 
 ## Product & UX
