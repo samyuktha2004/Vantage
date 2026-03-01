@@ -156,36 +156,14 @@ export function GuestLinkManager({ guest }: GuestLinkManagerProps) {
               </div>
             </div>
 
-            {/* Booking Reference */}
+            {/* Portal Link — primary share method */}
             <div>
-              <Label htmlFor="bookingRef" className="text-sm font-medium mb-2 block">
-                Booking Reference
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  id="bookingRef"
-                  value={guest.bookingRef}
-                  readOnly
-                  className="font-mono bg-muted/50"
-                />
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => copyToClipboard(guest.bookingRef, 'ref')}
-                >
-                  {copiedRef ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                This is what the guest searches for to access their portal
-              </p>
-            </div>
-
-            {/* Portal Link */}
-            <div>
-              <Label htmlFor="guestLink" className="text-sm font-medium mb-2 block">
+              <Label htmlFor="guestLink" className="text-sm font-medium mb-1 block">
                 Guest Portal Link
               </Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                <span className="font-medium text-foreground">Share this</span> — guest taps the link and lands directly in their personal portal. No login, no search.
+              </p>
               <div className="flex gap-2">
                 <Input
                   id="guestLink"
@@ -201,9 +179,31 @@ export function GuestLinkManager({ guest }: GuestLinkManagerProps) {
                   {copiedLink ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Direct link - no password needed, secured by unique token
+            </div>
+
+            {/* Booking Reference — fallback lookup */}
+            <div>
+              <Label htmlFor="bookingRef" className="text-sm font-medium mb-1 block">
+                Booking Reference
+              </Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                <span className="font-medium text-foreground">Fallback</span> — if the link doesn't work, guest can search for this code at your event page to find their portal.
               </p>
+              <div className="flex gap-2">
+                <Input
+                  id="bookingRef"
+                  value={guest.bookingRef}
+                  readOnly
+                  className="font-mono bg-muted/50"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => copyToClipboard(guest.bookingRef, 'ref')}
+                >
+                  {copiedRef ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                </Button>
+              </div>
             </div>
 
             {/* QR Code Section */}

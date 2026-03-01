@@ -10,7 +10,7 @@ import tboHotelRoutes from "./tbo-hotel-routes";
 import tboFlightRoutes from "./tbo-flight-routes";
 import { db } from "./db";
 import { searchHotels } from "./tbo/tboHotelService";
-import { events, hotelBookings, travelOptions, itineraryEvents, guests, labels, guestRequests } from "@shared/schema";
+import { events, hotelBookings, travelOptions, itineraryEvents, guests, labels, perks, labelPerks, guestRequests, bookingLabelInclusions, paymentTransactions } from "@shared/schema";
 import { eq, and, sql, or } from "drizzle-orm";
 
 // Middleware to get user from session
@@ -22,6 +22,36 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  const authorizeEventEditor = async (req: any, res: any, eventId: number) => {
+    const user = getUser(req);
+    if (!user || (user.role !== "agent" && user.role !== "client")) {
+      res.status(403).json({ message: "Only agents or clients can modify this event" });
+      return null;
+    }
+
+    const event = await storage.getEvent(eventId);
+    if (!event) {
+      res.status(404).json({ message: "Event not found" });
+      return null;
+    }
+
+    if (user.role === "agent" && event.agentId !== user.id) {
+      res.status(403).json({ message: "You can only edit your own events" });
+      return null;
+    }
+
+    if (user.role === "client") {
+      const canEditAsOwner = event.clientId === user.id;
+      const canEditByCode = !!user.eventCode && event.eventCode === user.eventCode;
+      if (!canEditAsOwner && !canEditByCode) {
+        res.status(403).json({ message: "You can only edit your own event" });
+        return null;
+      }
+    }
+
+    return { user, event };
+  };
+
   // Auth routes
   app.post("/api/auth/signup", async (req, res) => {
     try {
@@ -462,13 +492,31 @@ export async function registerRoutes(
   app.post("/api/events/:id/hotel-booking", async (req, res) => {
     try {
       const user = getUser(req);
-      if (!user || user.role !== "agent") {
-        return res.status(403).json({ message: "Only agents can add hotel bookings" });
+      if (!user || (user.role !== "agent" && user.role !== "client")) {
+        return res.status(403).json({ message: "Only agents or clients can add hotel bookings" });
+      }
+
+      const eventId = Number(req.params.id);
+      const event = await storage.getEvent(eventId);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+
+      if (user.role === "agent" && event.agentId !== user.id) {
+        return res.status(403).json({ message: "You can only add hotel bookings to your own events" });
+      }
+
+      if (user.role === "client") {
+        const canEditAsOwner = event.clientId === user.id;
+        const canEditByCode = !!user.eventCode && event.eventCode === user.eventCode;
+        if (!canEditAsOwner && !canEditByCode) {
+          return res.status(403).json({ message: "You can only add hotel bookings for your own event" });
+        }
       }
 
       const payload = {
         ...req.body,
-        eventId: Number(req.params.id),
+        eventId,
         checkInDate: req.body?.checkInDate ? new Date(req.body.checkInDate) : req.body?.checkInDate,
         checkOutDate: req.body?.checkOutDate ? new Date(req.body.checkOutDate) : req.body?.checkOutDate,
       };
@@ -505,17 +553,85 @@ export async function registerRoutes(
     }
   });
 
+  app.put("/api/events/:id/hotel-booking/:bookingId", async (req, res) => {
+    try {
+      const user = getUser(req);
+      if (!user || (user.role !== "agent" && user.role !== "client")) {
+        return res.status(403).json({ message: "Only agents or clients can update hotel bookings" });
+      }
+
+      const eventId = Number(req.params.id);
+      const event = await storage.getEvent(eventId);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+
+      if (user.role === "agent" && event.agentId !== user.id) {
+        return res.status(403).json({ message: "You can only update hotel bookings for your own events" });
+      }
+
+      if (user.role === "client") {
+        const canEditAsOwner = event.clientId === user.id;
+        const canEditByCode = !!user.eventCode && event.eventCode === user.eventCode;
+        if (!canEditAsOwner && !canEditByCode) {
+          return res.status(403).json({ message: "You can only update hotel bookings for your own event" });
+        }
+      }
+
+      const bookingId = Number(req.params.bookingId);
+      const existing = (await storage.getHotelBookings(eventId)).find((b) => b.id === bookingId);
+      if (!existing) {
+        return res.status(404).json({ message: "Hotel booking not found" });
+      }
+
+      const updates = {
+        baseRate: req.body?.baseRate ?? null,
+        commissionType: req.body?.commissionType ?? "amount",
+        commissionValue: req.body?.commissionValue ?? 0,
+        clientFacingRate: req.body?.clientFacingRate ?? null,
+      };
+
+      const updated = await storage.updateHotelBooking(bookingId, updates as any);
+      if (!updated) {
+        return res.status(404).json({ message: "Hotel booking not found" });
+      }
+
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Update hotel booking error:", err);
+      res.status(500).json({ message: err.message || "Failed to update hotel booking" });
+    }
+  });
+
   // Travel Options Routes
   app.post("/api/events/:id/travel-options", async (req, res) => {
     try {
       const user = getUser(req);
-      if (!user || user.role !== "agent") {
-        return res.status(403).json({ message: "Only agents can add travel options" });
+      if (!user || (user.role !== "agent" && user.role !== "client")) {
+        return res.status(403).json({ message: "Only agents or clients can add travel options" });
+      }
+
+      const eventId = Number(req.params.id);
+      const event = await storage.getEvent(eventId);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+
+      if (user.role === "agent" && event.agentId !== user.id) {
+        return res.status(403).json({ message: "You can only add travel options to your own events" });
+      }
+
+      if (user.role === "client") {
+        const canEditAsOwner = event.clientId === user.id;
+        const canEditByCode = !!user.eventCode && event.eventCode === user.eventCode;
+        if (!canEditAsOwner && !canEditByCode) {
+          return res.status(403).json({ message: "You can only add travel options for your own event" });
+        }
       }
 
       const payload = {
         ...req.body,
-        eventId: Number(req.params.id),
+        eventId,
         departureDate: req.body?.departureDate ? new Date(req.body.departureDate) : req.body?.departureDate,
         returnDate: req.body?.returnDate ? new Date(req.body.returnDate) : req.body?.returnDate,
       };
@@ -557,6 +673,198 @@ export async function registerRoutes(
     }
   });
 
+  // Label inclusions per booking (hotel/flight)
+  app.get("/api/events/:id/booking-label-inclusions", async (req, res) => {
+    try {
+      const eventId = Number(req.params.id);
+      const bookingType = String(req.query.bookingType || "").trim();
+      const bookingId = req.query.bookingId ? Number(req.query.bookingId) : null;
+
+      const filters = [eq(bookingLabelInclusions.eventId, eventId)];
+      if (bookingType) {
+        filters.push(eq(bookingLabelInclusions.bookingType, bookingType));
+      }
+      if (bookingId && Number.isFinite(bookingId)) {
+        filters.push(eq(bookingLabelInclusions.bookingId, bookingId));
+      }
+
+      const rows = await db.select().from(bookingLabelInclusions).where(and(...filters));
+      res.json(rows);
+    } catch (err: any) {
+      console.error("Get booking label inclusions error:", err);
+      res.status(500).json({ message: err.message || "Failed to load booking label inclusions" });
+    }
+  });
+
+  app.post("/api/events/:id/booking-label-inclusions", async (req, res) => {
+    try {
+      const user = getUser(req);
+      if (!user || (user.role !== "agent" && user.role !== "client")) {
+        return res.status(403).json({ message: "Only agents or clients can edit label inclusions" });
+      }
+
+      const eventId = Number(req.params.id);
+      const [event] = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+
+      const canEditAsAgent = user.role === "agent" && event.agentId === user.id;
+      const canEditAsClient = user.role === "client" && (event.clientId === user.id || (!!user.eventCode && event.eventCode === user.eventCode));
+      if (!canEditAsAgent && !canEditAsClient) {
+        return res.status(403).json({ message: "You can only edit inclusions for your own events" });
+      }
+
+      const input = z.object({
+        bookingType: z.enum(["hotel", "flight"]),
+        bookingId: z.number().int().positive(),
+        labelId: z.number().int().positive(),
+        isIncluded: z.boolean().default(false),
+        inclusions: z.string().optional().nullable(),
+      }).parse(req.body);
+
+      const [label] = await db
+        .select()
+        .from(labels)
+        .where(and(eq(labels.id, input.labelId), eq(labels.eventId, eventId)))
+        .limit(1);
+      if (!label) {
+        return res.status(404).json({ message: "Label not found for this event" });
+      }
+
+      if (input.bookingType === "hotel") {
+        const [booking] = await db
+          .select()
+          .from(hotelBookings)
+          .where(and(eq(hotelBookings.id, input.bookingId), eq(hotelBookings.eventId, eventId)))
+          .limit(1);
+        if (!booking) {
+          return res.status(404).json({ message: "Hotel booking not found for this event" });
+        }
+      } else {
+        const [option] = await db
+          .select()
+          .from(travelOptions)
+          .where(and(eq(travelOptions.id, input.bookingId), eq(travelOptions.eventId, eventId)))
+          .limit(1);
+        if (!option) {
+          return res.status(404).json({ message: "Travel option not found for this event" });
+        }
+      }
+
+      const [row] = await db
+        .insert(bookingLabelInclusions)
+        .values({
+          eventId,
+          labelId: input.labelId,
+          bookingType: input.bookingType,
+          bookingId: input.bookingId,
+          isIncluded: input.isIncluded,
+          inclusions: input.inclusions?.trim() || null,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [
+            bookingLabelInclusions.bookingType,
+            bookingLabelInclusions.bookingId,
+            bookingLabelInclusions.labelId,
+          ],
+          set: {
+            isIncluded: input.isIncluded,
+            inclusions: input.inclusions?.trim() || null,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+
+      res.status(201).json(row);
+    } catch (err: any) {
+      console.error("Upsert booking label inclusion error:", err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message || "Invalid payload" });
+      }
+      res.status(500).json({ message: err.message || "Failed to save booking label inclusion" });
+    }
+  });
+
+  // Payment responsibility for a booking (upsert-like)
+  app.post("/api/events/:id/booking-payment-responsibility", async (req, res) => {
+    try {
+      const auth = await authorizeEventEditor(req, res, Number(req.params.id));
+      if (!auth) return;
+      const { event } = auth;
+
+      const input = z.object({
+        bookingType: z.enum(["hotel", "flight"]),
+        bookingId: z.number().int().positive(),
+        responsibility: z.enum(["client", "guest", "agent", "third_party"]).optional(),
+      }).parse(req.body);
+
+      if (input.bookingType === "hotel") {
+        const [booking] = await db.select().from(hotelBookings).where(and(eq(hotelBookings.id, input.bookingId), eq(hotelBookings.eventId, event.id))).limit(1);
+        if (!booking) return res.status(404).json({ message: "Hotel booking not found" });
+        const [updated] = await db.update(hotelBookings).set({ paymentResponsibility: input.responsibility ?? null }).where(eq(hotelBookings.id, input.bookingId)).returning();
+        return res.json(updated);
+      } else {
+        const [opt] = await db.select().from(travelOptions).where(and(eq(travelOptions.id, input.bookingId), eq(travelOptions.eventId, event.id))).limit(1);
+        if (!opt) return res.status(404).json({ message: "Travel option not found" });
+        const [updated] = await db.update(travelOptions).set({ paymentResponsibility: input.responsibility ?? null }).where(eq(travelOptions.id, input.bookingId)).returning();
+        return res.json(updated);
+      }
+    } catch (err: any) {
+      console.error("Set payment responsibility error:", err);
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message || "Invalid payload" });
+      res.status(500).json({ message: err.message || "Failed to set payment responsibility" });
+    }
+  });
+
+  // Payment transactions (create and list)
+  app.post("/api/events/:id/payment-transactions", async (req, res) => {
+    try {
+      const auth = await authorizeEventEditor(req, res, Number(req.params.id));
+      if (!auth) return;
+      const { event } = auth;
+
+      const input = z.object({
+        bookingType: z.enum(["hotel", "flight"]).optional(),
+        bookingId: z.number().int().positive().optional(),
+        guestId: z.number().int().positive().optional(),
+        payer: z.enum(["client", "guest", "agent", "third_party"]),
+        amount: z.number().int().positive(),
+        currency: z.string().optional().default("INR"),
+        transactionRef: z.string().optional(),
+      }).parse(req.body);
+
+      const [row] = await db.insert(paymentTransactions).values({
+        eventId: event.id,
+        bookingType: input.bookingType ?? null,
+        bookingId: input.bookingId ?? null,
+        guestId: input.guestId ?? null,
+        payer: input.payer,
+        amount: input.amount,
+        currency: input.currency ?? 'INR',
+        transactionRef: input.transactionRef ?? null,
+      }).returning();
+
+      res.status(201).json(row);
+    } catch (err: any) {
+      console.error("Create payment transaction error:", err);
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message || "Invalid payload" });
+      res.status(500).json({ message: err.message || "Failed to create payment transaction" });
+    }
+  });
+
+  app.get("/api/events/:id/payment-transactions", async (req, res) => {
+    try {
+      const eventId = Number(req.params.id);
+      const rows = await db.select().from(paymentTransactions).where(eq(paymentTransactions.eventId, eventId));
+      res.json(rows);
+    } catch (err: any) {
+      console.error("List payment transactions error:", err);
+      res.status(500).json({ message: err.message || "Failed to load payment transactions" });
+    }
+  });
+
   // Labels
   app.get(api.labels.list.path, async (req, res) => {
     const labels = await storage.getLabels(Number(req.params.eventId));
@@ -565,8 +873,12 @@ export async function registerRoutes(
 
   app.post(api.labels.create.path, async (req, res) => {
     try {
+      const eventId = Number(req.params.eventId);
+      const auth = await authorizeEventEditor(req, res, eventId);
+      if (!auth) return;
+
       const input = api.labels.create.input.parse(req.body);
-      const label = await storage.createLabel({ ...input, eventId: Number(req.params.eventId) });
+      const label = await storage.createLabel({ ...input, eventId });
       res.status(201).json(label);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -579,8 +891,15 @@ export async function registerRoutes(
   
   app.put(api.labels.update.path, async (req, res) => {
       try {
+        const labelId = Number(req.params.id);
+        const [existingLabel] = await db.select().from(labels).where(eq(labels.id, labelId)).limit(1);
+        if (!existingLabel) return res.status(404).json({ message: "Label not found" });
+
+        const auth = await authorizeEventEditor(req, res, Number(existingLabel.eventId));
+        if (!auth) return;
+
           const input = api.labels.update.input.parse(req.body);
-          const label = await storage.updateLabel(Number(req.params.id), input);
+        const label = await storage.updateLabel(labelId, input);
           if (!label) return res.status(404).json({ message: "Label not found" });
           res.json(label);
       } catch (err) {
@@ -600,8 +919,12 @@ export async function registerRoutes(
 
   app.post(api.perks.create.path, async (req, res) => {
     try {
+      const eventId = Number(req.params.eventId);
+      const auth = await authorizeEventEditor(req, res, eventId);
+      if (!auth) return;
+
       const input = api.perks.create.input.parse(req.body);
-      const perk = await storage.createPerk({ ...input, eventId: Number(req.params.eventId) });
+      const perk = await storage.createPerk({ ...input, eventId });
       res.status(201).json(perk);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -614,8 +937,15 @@ export async function registerRoutes(
 
   app.put(api.perks.update.path, async (req, res) => {
       try {
+        const perkId = Number(req.params.id);
+        const [existingPerk] = await db.select().from(perks).where(eq(perks.id, perkId)).limit(1);
+        if (!existingPerk) return res.status(404).json({ message: "Perk not found" });
+
+        const auth = await authorizeEventEditor(req, res, Number(existingPerk.eventId));
+        if (!auth) return;
+
           const input = api.perks.update.input.parse(req.body);
-          const perk = await storage.updatePerk(Number(req.params.id), input);
+        const perk = await storage.updatePerk(perkId, input);
           if (!perk) return res.status(404).json({ message: "Perk not found" });
           res.json(perk);
       } catch (err) {
@@ -635,8 +965,15 @@ export async function registerRoutes(
 
   app.put(api.labelPerks.update.path, async (req, res) => {
     try {
+      const labelId = Number(req.params.labelId);
+      const [existingLabel] = await db.select().from(labels).where(eq(labels.id, labelId)).limit(1);
+      if (!existingLabel) return res.status(404).json({ message: "Label not found" });
+
+      const auth = await authorizeEventEditor(req, res, Number(existingLabel.eventId));
+      if (!auth) return;
+
       const input = api.labelPerks.update.input.parse(req.body);
-      const labelPerk = await storage.updateLabelPerk(Number(req.params.labelId), Number(req.params.perkId), input);
+      const labelPerk = await storage.updateLabelPerk(labelId, Number(req.params.perkId), input);
       res.json(labelPerk);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -661,8 +998,12 @@ export async function registerRoutes(
 
   app.post(api.guests.create.path, async (req, res) => {
     try {
+      const eventId = Number(req.params.eventId);
+      const auth = await authorizeEventEditor(req, res, eventId);
+      if (!auth) return;
+
       const input = api.guests.create.input.parse(req.body);
-      const guest = await storage.createGuest({ ...input, eventId: Number(req.params.eventId) });
+      const guest = await storage.createGuest({ ...input, eventId });
       res.status(201).json(guest);
     } catch (err: any) {
       console.error('[ERROR] Failed to create guest:', err.message || String(err));
@@ -699,8 +1040,15 @@ export async function registerRoutes(
 
   app.put(api.guests.update.path, async (req, res) => {
       try {
+        const guestId = Number(req.params.id);
+        const existingGuest = await storage.getGuest(guestId);
+        if (!existingGuest) return res.status(404).json({ message: "Guest not found" });
+
+        const auth = await authorizeEventEditor(req, res, Number(existingGuest.eventId));
+        if (!auth) return;
+
           const input = api.guests.update.input.parse(req.body);
-          const guest = await storage.updateGuest(Number(req.params.id), input);
+        const guest = await storage.updateGuest(guestId, input);
           if (!guest) return res.status(404).json({ message: "Guest not found" });
           res.json(guest);
       } catch (err) {
@@ -714,17 +1062,15 @@ export async function registerRoutes(
 
   app.delete(api.guests.delete.path, async (req, res) => {
     try {
-      const user = getUser(req);
-      if (!user) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-
       const guestId = Number(req.params.id);
       const guest = await storage.getGuest(guestId);
       
       if (!guest) {
         return res.status(404).json({ message: "Guest not found" });
       }
+
+      const auth = await authorizeEventEditor(req, res, Number(guest.eventId));
+      if (!auth) return;
 
       await storage.deleteGuest(guestId);
       res.json({ success: true });

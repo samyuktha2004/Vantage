@@ -42,6 +42,7 @@ export interface IStorage {
   // Hotel Bookings
   createHotelBooking(booking: InsertHotelBooking): Promise<HotelBooking>;
   getHotelBookings(eventId: number): Promise<HotelBooking[]>;
+  updateHotelBooking(id: number, data: Partial<InsertHotelBooking>): Promise<HotelBooking | undefined>;
 
   // Travel Options
   createTravelOption(option: InsertTravelOption): Promise<TravelOption>;
@@ -170,6 +171,15 @@ export class DatabaseStorage implements IStorage {
 
   async getHotelBookings(eventId: number): Promise<HotelBooking[]> {
     return await db.select().from(hotelBookings).where(eq(hotelBookings.eventId, eventId));
+  }
+
+  async updateHotelBooking(id: number, data: Partial<InsertHotelBooking>): Promise<HotelBooking | undefined> {
+    const [updated] = await db
+      .update(hotelBookings)
+      .set(data)
+      .where(eq(hotelBookings.id, id))
+      .returning();
+    return updated;
   }
 
   // Travel Options
@@ -533,6 +543,13 @@ export class InMemoryStorage implements IStorage {
 
   async getHotelBookings(eventId: number): Promise<HotelBooking[]> {
     return this.hotelBookings.filter(b => b.eventId === eventId);
+  }
+
+  async updateHotelBooking(id: number, data: Partial<InsertHotelBooking>): Promise<HotelBooking | undefined> {
+    const index = this.hotelBookings.findIndex(h => h.id === id);
+    if (index === -1) return undefined;
+    this.hotelBookings[index] = { ...this.hotelBookings[index], ...data } as HotelBooking;
+    return this.hotelBookings[index];
   }
 
   // Travel Options

@@ -52,6 +52,29 @@ function formatEventDateRange(startValue: unknown, endValue?: unknown): string {
     : `${format(startDate, "PPP")} → ${format(endDate, "PPP")}`;
 }
 
+function getSelfPaidLabels(guest: any): string[] {
+  const labels: string[] = [];
+  const fullFlightSelfPaid = !!guest?.selfManageFlights || (!!guest?.selfManageArrival && !!guest?.selfManageDeparture);
+  const hotelSelfPaid = !!guest?.selfManageHotel;
+
+  if (fullFlightSelfPaid && hotelSelfPaid) {
+    return ["Self Paid · All"];
+  }
+
+  if (fullFlightSelfPaid) {
+    labels.push("Self Paid · Flight");
+  } else {
+    if (guest?.selfManageArrival) labels.push("Self Paid · Arrival");
+    if (guest?.selfManageDeparture) labels.push("Self Paid · Departure");
+  }
+
+  if (hotelSelfPaid) {
+    labels.push("Self Paid · Hotel");
+  }
+
+  return labels;
+}
+
 export default function EventDetails() {
   const [match, params] = useRoute("/events/:id");
   const id = Number(params?.id);
@@ -381,12 +404,11 @@ export default function EventDetails() {
     setUploading(true);
     try {
       for (const guest of importedGuests) {
-        await fetch(`/api/events/${id}/guests`, {
+        const res = await fetch(`/api/events/${id}/guests`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
-            eventId: id,
             name: guest.name,
             email: guest.email,
             phone: guest.phone ? String(guest.phone) : undefined,
@@ -395,6 +417,11 @@ export default function EventDetails() {
             specialRequests: guest.specialRequests,
           }),
         });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err?.message || `Failed to import ${guest.name || "guest"}`);
+        }
       }
 
       toast({ title: "Import successful!", description: `${importedGuests.length} guests added` });
@@ -425,7 +452,7 @@ export default function EventDetails() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ eventId: id, name: newLabelName, addOnBudget: newLabelBudget }),
+        body: JSON.stringify({ name: newLabelName, addOnBudget: newLabelBudget }),
       });
 
       if (!response.ok) throw new Error('Failed to create label');
@@ -452,7 +479,7 @@ export default function EventDetails() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ eventId: id, ...newPerkData }),
+        body: JSON.stringify({ ...newPerkData }),
       });
 
       if (!response.ok) throw new Error('Failed to create perk');
@@ -534,7 +561,6 @@ export default function EventDetails() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          eventId: id,
           name: newGuestData.name,
           email: newGuestData.email,
           phone: newGuestData.phone || undefined,
@@ -1275,6 +1301,11 @@ export default function EventDetails() {
                         {guest.status}
                       </span>
                     )}
+                    {getSelfPaidLabels(guest).map((selfPaidLabel) => (
+                      <span key={`${guest.id}-${selfPaidLabel}`} className="inline-block mt-1 ml-2 px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">
+                        {selfPaidLabel}
+                      </span>
+                    ))}
                   </div>
                   <div className="flex items-center gap-2">
                     <GuestLinkManager guest={guest} />

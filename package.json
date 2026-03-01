@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "setup:db": "npm run db:push && node scripts/ensure-session-table.mjs",
+    "setup:db:force": "node scripts/guard-db-force.mjs && drizzle-kit push --force && node scripts/ensure-session-table.mjs",
     "dev": "tsx watch server/index.ts",
     "build": "tsx script/build.ts",
     "start": "node dist/index.cjs",

@@ -37,7 +37,7 @@ export function useCreateRequest() {
 export function useUpdateRequest() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, status, notes }: { id: number, status: string, notes?: string }) => {
+    mutationFn: async ({ id, status, notes, eventId: _eventId }: { id: number, status: string, notes?: string, eventId: number }) => {
       const url = buildUrl(api.requests.update.path, { id });
       const res = await fetch(url, {
         method: "PUT",
@@ -48,8 +48,8 @@ export function useUpdateRequest() {
       if (!res.ok) throw new Error("Failed to update request");
       return api.requests.update.responses[200].parse(await res.json());
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.requests.list.path] });
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.requests.list.path, variables.eventId] });
     },
   });
 }

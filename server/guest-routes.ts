@@ -322,7 +322,7 @@ guestRoutes.put('/api/guest/:token/rsvp', async (req, res) => {
       }
     }
     
-    res.json(updatedGuest);
+    res.json(guest);
     
   } catch (error) {
     console.error('RSVP update error:', error);

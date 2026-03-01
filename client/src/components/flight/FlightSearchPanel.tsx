@@ -239,11 +239,12 @@ export function FlightSearchPanel({ eventId, onBooked }: Props) {
 
       // TBO wraps all responses in a "Response" envelope
       const tid: string = result?.Response?.TraceId ?? "";
-      // Results is FlightResult[][] — take the first flight from each group
-      const rawResults: any[][] = result?.Response?.Results ?? [];
+      // Results is usually FlightResult[][], but some providers can return mixed shapes.
+      const rawEnvelope = result?.Response?.Results;
+      const rawResults: any[] = Array.isArray(rawEnvelope) ? rawEnvelope : [];
       let results: FlightResult[] = rawResults
-        .map((group: any[]) => group[0])
-        .filter(Boolean);
+        .map((group: any) => (Array.isArray(group) ? group[0] : group))
+        .filter(Boolean) as FlightResult[];
 
       if (results.length === 0) {
         results = generateMockFlights({

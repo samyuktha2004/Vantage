@@ -253,40 +253,46 @@ export default function GuestDashboard() {
           </Card>
 
           {/* Step 3 — Summary */}
-          <Card>
+          <Card className={!hasTravel ? "border-amber-200 bg-amber-50/30" : ""}>
             <CardContent className="pt-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Hotel className="w-5 h-5 text-primary" />
+                <Hotel className={`w-5 h-5 ${!hasTravel ? "text-amber-600" : "text-primary"}`} />
                 <div>
                   <p className="font-medium text-sm">Booking Summary</p>
-                  <p className="text-xs text-muted-foreground">Review your hotel & flight details</p>
+                  <p className="text-xs text-muted-foreground">
+                    {hasTravel ? "Review your hotel & flight details" : "Complete travel prefs to see your summary"}
+                  </p>
                 </div>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => navigate(`/guest/${token}/summary`)}>
+              <Button variant="outline" size="sm" onClick={() => navigate(`/guest/${token}/summary`)}>
                 View <ChevronRight className="w-3.5 h-3.5 ml-1" />
               </Button>
             </CardContent>
           </Card>
 
           {/* Step 4 — Add-ons */}
-          <Card>
-            <CardContent className="pt-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Sparkles className="w-5 h-5 text-primary" />
-                <div>
-                  <p className="font-medium text-sm">Add-ons & Perks</p>
-                  <p className="text-xs text-muted-foreground">
-                    {(guestData.availablePerks?.filter((p: any) => p.isEnabled)?.length ?? 0) > 0
-                      ? `${guestData.availablePerks.filter((p: any) => p.isEnabled).length} available`
-                      : "Browse available extras"}
-                  </p>
-                </div>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => navigate(`/guest/${token}/addons`)}>
-                View <ChevronRight className="w-3.5 h-3.5 ml-1" />
-              </Button>
-            </CardContent>
-          </Card>
+          {(() => {
+            const availableCount = guestData.availablePerks?.filter((p: any) => p.isEnabled)?.length ?? 0;
+            const hasPerks = availableCount > 0;
+            return (
+              <Card className={hasPerks ? "border-amber-200 bg-amber-50/30" : ""}>
+                <CardContent className="pt-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Sparkles className={`w-5 h-5 ${hasPerks ? "text-amber-600" : "text-primary"}`} />
+                    <div>
+                      <p className="font-medium text-sm">Add-ons & Perks</p>
+                      <p className="text-xs text-muted-foreground">
+                        {hasPerks ? `${availableCount} available for your tier` : "No extras added yet"}
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => navigate(`/guest/${token}/addons`)}>
+                    {hasPerks ? "Browse" : "View"} <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {/* ID Vault */}
           <Card>

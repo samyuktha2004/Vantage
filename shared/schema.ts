@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -55,6 +55,8 @@ export const hotelBookings = pgTable("hotel_bookings", {
   commissionType: text("commission_type").default("amount"), // "amount" | "percentage"
   commissionValue: integer("commission_value").default(0),
   clientFacingRate: integer("client_facing_rate"),
+  // Who is expected to pay for this booking (nullable). Values: 'client' | 'guest' | 'agent' | 'third_party'
+  paymentResponsibility: text("payment_responsibility"),
   // TBO API data — populated when booked via TBO Hotel API (null for manual entries)
   tboHotelData: jsonb("tbo_hotel_data"),
 });
@@ -72,9 +74,34 @@ export const travelOptions = pgTable("travel_options", {
   commissionType: text("commission_type").default("amount"), // "amount" | "percentage"
   commissionValue: integer("commission_value").default(0),
   clientFacingFare: integer("client_facing_fare"),
+  // Who is expected to pay for this travel option (nullable). Values: 'client' | 'guest' | 'agent' | 'third_party'
+  paymentResponsibility: text("payment_responsibility"),
   // TBO API data — populated when booked via TBO Air API (null for manual entries)
   tboFlightData: jsonb("tbo_flight_data"),
 });
+
+// Per-booking inclusions by label (editable by agent/client in setup)
+export const bookingLabelInclusions = pgTable(
+  "booking_label_inclusions",
+  {
+    id: serial("id").primaryKey(),
+    eventId: integer("event_id").notNull().references(() => events.id),
+    labelId: integer("label_id").notNull().references(() => labels.id),
+    bookingType: text("booking_type").notNull(), // "hotel" | "flight"
+    bookingId: integer("booking_id").notNull(),
+    isIncluded: boolean("is_included").notNull().default(false),
+    inclusions: text("inclusions"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    bookingLabelUnique: uniqueIndex("booking_label_unique_idx").on(
+      table.bookingType,
+      table.bookingId,
+      table.labelId,
+    ),
+  }),
+);
 
 // Flight/Train Schedules
 export const travelSchedules = pgTable("travel_schedules", {
@@ -259,6 +286,20 @@ export const groupInventory = pgTable("group_inventory", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Payment Transactions — authoritative payment records for bookings/guests
+export const paymentTransactions = pgTable("payment_transactions", {
+  id: serial("id").primaryKey(),
+  eventId: integer("event_id").notNull().references(() => events.id),
+  bookingType: text("booking_type"), // 'hotel' | 'flight' | null
+  bookingId: integer("booking_id"),
+  guestId: integer("guest_id").references(() => guests.id),
+  payer: text("payer").notNull(), // 'client' | 'guest' | 'agent' | 'third_party'
+  amount: integer("amount").notNull(),
+  currency: text("currency").default("INR").notNull(),
+  transactionRef: text("transaction_ref"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations
 export const eventsRelations = relations(events, ({ one, many }) => ({
   agent: one(users, { fields: [events.agentId], references: [users.id], relationName: 'agent_events' }),
@@ -271,6 +312,8 @@ export const eventsRelations = relations(events, ({ one, many }) => ({
   guests: many(guests),
   itineraryEvents: many(itineraryEvents),
   inventory: many(groupInventory),
+  bookingLabelInclusions: many(bookingLabelInclusions),
+  paymentTransactions: many(paymentTransactions),
 }));
 
 export const clientDetailsRelations = relations(clientDetails, ({ one }) => ({
@@ -296,6 +339,12 @@ export const labelsRelations = relations(labels, ({ one, many }) => ({
   event: one(events, { fields: [labels.eventId], references: [events.id] }),
   labelPerks: many(labelPerks),
   guests: many(guests),
+  bookingLabelInclusions: many(bookingLabelInclusions),
+}));
+
+export const bookingLabelInclusionsRelations = relations(bookingLabelInclusions, ({ one }) => ({
+  event: one(events, { fields: [bookingLabelInclusions.eventId], references: [events.id] }),
+  label: one(labels, { fields: [bookingLabelInclusions.labelId], references: [labels.id] }),
 }));
 
 export const perksRelations = relations(perks, ({ one, many }) => ({
@@ -342,6 +391,11 @@ export const groupInventoryRelations = relations(groupInventory, ({ one }) => ({
   travelOption: one(travelOptions, { fields: [groupInventory.travelOptionId], references: [travelOptions.id] }),
 }));
 
+export const paymentTransactionsRelations = relations(paymentTransactions, ({ one }) => ({
+  event: one(events, { fields: [paymentTransactions.eventId], references: [events.id] }),
+  guest: one(guests, { fields: [paymentTransactions.guestId], references: [guests.id] }),
+}));
+
 // Schemas
 export const insertEventSchema = createInsertSchema(events).omit({ 
   id: true, 
@@ -376,6 +430,7 @@ export const insertGuestRequestSchema = createInsertSchema(guestRequests).omit({
 export const insertItineraryEventSchema = createInsertSchema(itineraryEvents).omit({ id: true });
 export const insertGuestItinerarySchema = createInsertSchema(guestItinerary).omit({ id: true });
 export const insertGroupInventorySchema = createInsertSchema(groupInventory).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertBookingLabelInclusionSchema = createInsertSchema(bookingLabelInclusions).omit({ id: true, createdAt: true, updatedAt: true });
 
 // Types
 export type Event = typeof events.$inferSelect;
@@ -406,6 +461,8 @@ export type GuestItinerary = typeof guestItinerary.$inferSelect;
 export type InsertGuestItinerary = z.infer<typeof insertGuestItinerarySchema>;
 export type GroupInventory = typeof groupInventory.$inferSelect;
 export type InsertGroupInventory = z.infer<typeof insertGroupInventorySchema>;
+export type BookingLabelInclusion = typeof bookingLabelInclusions.$inferSelect;
+export type InsertBookingLabelInclusion = z.infer<typeof insertBookingLabelInclusionSchema>;
 
 // Complex Types for API Responses
 export type LabelWithPerks = Label & { perks: (LabelPerk & { perk: Perk })[] };

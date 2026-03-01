@@ -2,6 +2,89 @@
 
 Use this guide after importing/cloning the repo from GitHub to fully set up and run locally on VS Code (Windows/macOS/Linux).
 
+## Fast path (recommended)
+
+After cloning, run:
+
+```bash
+npm run setup
+```
+
+What `npm run setup` does automatically:
+
+1. Checks Node version (18+)
+2. Creates `.env` from `.env.example` if missing
+3. Auto-generates `SESSION_SECRET` if placeholder/missing
+4. Installs dependencies
+5. Validates whether `DATABASE_URL` looks configured
+
+For safety, `npm run setup` does **not** modify the database automatically.
+
+Then start app:
+
+```bash
+npm run dev
+```
+
+If `DATABASE_URL` is still placeholder, setup stops after dependency/env prep and tells you to run:
+
+```bash
+npm run setup:db
+```
+
+once your DB URL is set.
+
+If `DATABASE_URL` is valid, it will still ask you to run DB setup explicitly:
+
+```bash
+npm run setup:db
+```
+
+This avoids accidental data loss on shared/staging/prod databases.
+
+## DB automation: pros and cons
+
+### Option A: `npm run setup:db` (safe default)
+
+Pros:
+
+- Uses normal Drizzle push flow
+- Shows warnings/prompts before destructive operations
+- Better for shared or important databases
+
+Cons:
+
+- Not fully hands-free
+- May pause for confirmation when schema changes are destructive
+
+### Option B: `npm run setup:db:force` (explicit opt-in)
+
+Pros:
+
+- Fully non-interactive and CI-friendly
+- Fast for disposable local dev databases
+
+Cons:
+
+- Can drop unmanaged tables and delete data
+- Unsafe for staging/production/shared DBs
+
+Guard:
+
+- This command is blocked unless `ALLOW_DB_FORCE=true` is set.
+- This command is always blocked when `NODE_ENV=production`.
+- macOS/Linux:
+
+```bash
+ALLOW_DB_FORCE=true npm run setup:db:force
+```
+
+- Windows (PowerShell):
+
+```powershell
+$env:ALLOW_DB_FORCE='true'; npm run setup:db:force
+```
+
 ## 0) What you need to set up
 
 - Git
@@ -38,7 +121,7 @@ code .
 3. Paste repo URL and choose local folder.
 4. Open the cloned `vantage` folder.
 
-## 2) Install dependencies
+## 2) Install dependencies (manual path)
 
 From project root:
 
@@ -46,7 +129,7 @@ From project root:
 npm install
 ```
 
-## 3) Create `.env` from template
+## 3) Create `.env` from template (manual path)
 
 ### macOS/Linux (zsh/bash)
 
@@ -60,7 +143,7 @@ cp .env.example .env
 Copy-Item .env.example .env
 ```
 
-## 4) Configure required environment variables
+## 4) Configure required environment variables (manual path)
 
 Update `.env` with these required values:
 
@@ -166,11 +249,16 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ## 10) Useful commands
 
 ```bash
+npm run setup    # one-command local setup (deps + env prep + DB setup when DATABASE_URL is valid)
+npm run setup:db # DB-only setup (safe default with prompts)
+npm run setup:db:force # DB-only setup (non-interactive, destructive allowed)
 npm run dev      # start local dev server
 npm run db:push  # sync schema to Supabase
 npm run check    # TypeScript type-check
 npm run build    # production build
 ```
+
+Note: use `setup:db:force` only on disposable local/dev databases, with `ALLOW_DB_FORCE=true` explicitly set.
 
 ## Related docs
 

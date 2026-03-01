@@ -61,6 +61,29 @@ function formatEventDateRange(startValue: unknown, endValue?: unknown): string {
     : `${format(startDate, "PPP")} → ${format(endDate, "PPP")}`;
 }
 
+function getSelfPaidLabels(guest: any): string[] {
+  const labels: string[] = [];
+  const fullFlightSelfPaid = !!guest?.selfManageFlights || (!!guest?.selfManageArrival && !!guest?.selfManageDeparture);
+  const hotelSelfPaid = !!guest?.selfManageHotel;
+
+  if (fullFlightSelfPaid && hotelSelfPaid) {
+    return ["Self Paid · All"];
+  }
+
+  if (fullFlightSelfPaid) {
+    labels.push("Self Paid · Flight");
+  } else {
+    if (guest?.selfManageArrival) labels.push("Self Paid · Arrival");
+    if (guest?.selfManageDeparture) labels.push("Self Paid · Departure");
+  }
+
+  if (hotelSelfPaid) {
+    labels.push("Self Paid · Hotel");
+  }
+
+  return labels;
+}
+
 export default function ClientEventView({ eventId }: ClientEventViewProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -70,6 +93,7 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
   const { data: perks } = usePerks(eventId);
   const { data: guests } = useGuests(eventId);
   const [expandedGuests, setExpandedGuests] = useState<number[]>([]);
+  const [rsvpFilter, setRsvpFilter] = useState<'all'|'confirmed'|'pending'|'declined'>('all');
   const { data: requests } = useRequests(eventId);
   const updateRequest = useUpdateRequest();
   const { data: hotelBookings } = useHotelBookings(eventId);
@@ -286,15 +310,30 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
   const handleImportConfirm = async () => {
     setUploading(true);
     try {
+      let successCount = 0;
+      const failedRows: Array<{ guest: any; reason: string }> = [];
+
       for (const guest of pendingImport) {
+        const name = String(guest.name || "").trim();
+        const email = String(guest.email || "").trim();
+
+        if (!name) {
+          failedRows.push({ guest, reason: "Missing name" });
+          continue;
+        }
+
+        if (!email) {
+          failedRows.push({ guest, reason: "Missing email" });
+          continue;
+        }
+
         const res = await fetch(`/api/events/${eventId}/guests`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
-            eventId,
-            name: guest.name,
-            email: guest.email,
+            name,
+            email,
             phone: guest.phone ? String(guest.phone) : undefined,
             category: guest.category,
             dietaryRestrictions: guest.dietaryRestrictions,
@@ -314,12 +353,35 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
               bodyMsg = '';
             }
           }
-          throw new Error(`Import failed for ${guest.name || '<unknown>'}: ${res.status} ${res.statusText}${bodyMsg ? ` - ${bodyMsg}` : ''}`);
+
+          failedRows.push({
+            guest,
+            reason: `${res.status} ${res.statusText}${bodyMsg ? ` - ${bodyMsg}` : ''}`,
+          });
+          continue;
         }
+
+        successCount += 1;
       }
-      toast({ title: "Guests imported!", description: `${pendingImport.length} guests added` });
-      setPendingImport([]);
-      queryClient.invalidateQueries({ queryKey: ["guests", eventId] });
+
+      if (successCount > 0) {
+        queryClient.invalidateQueries({ queryKey: [api.guests.list.path, eventId] });
+      }
+
+      if (failedRows.length === 0) {
+        toast({ title: "Guests imported!", description: `${successCount} guests added` });
+        setPendingImport([]);
+      } else if (successCount > 0) {
+        toast({
+          title: "Import partially complete",
+          description: `${successCount} imported, ${failedRows.length} failed. Showing failed rows for retry.`,
+          variant: "destructive",
+        });
+        setPendingImport(failedRows.map((row) => row.guest));
+      } else {
+        const firstFailure = failedRows[0]?.reason || "Unknown error";
+        throw new Error(`All rows failed to import. First error: ${firstFailure}`);
+      }
     } catch (err: any) {
       toast({ title: "Import failed", description: err.message, variant: "destructive" });
     } finally {
@@ -414,7 +476,7 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
 
   const handleClientDecision = async (requestId: number, decision: "approved" | "rejected") => {
     try {
-      await updateRequest.mutateAsync({ id: requestId, status: decision });
+      await updateRequest.mutateAsync({ id: requestId, status: decision, eventId });
       toast({ title: decision === "approved" ? "Request Approved" : "Request Rejected" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -479,12 +541,23 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
           <CardDescription>Quick view of attendees by RSVP status with share link</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
+          <div className="p-3 flex items-center justify-end">
+            <label className="text-sm text-muted-foreground mr-2">Show</label>
+            <select value={rsvpFilter} onChange={(e) => setRsvpFilter(e.target.value as any)} className="rounded border-input px-2 py-1 text-sm">
+              <option value="all">All</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="pending">Pending</option>
+              <option value="declined">Declined</option>
+            </select>
+          </div>
           <div className="divide-y divide-border/50">
-            {['confirmed', 'pending', 'declined'].map((status) => (
-              <div key={status} className="p-4">
-                <p className="text-sm font-medium capitalize mb-2">{status} · {(allGuests ?? []).filter(g => (g.status ?? 'pending') === status).length}</p>
-                <div className="grid gap-2">
-                  {(allGuests ?? []).filter(g => (g.status ?? 'pending') === status).slice(0, 50).map((g: any) => {
+            {['confirmed', 'pending', 'declined'].map((status) => {
+              if (rsvpFilter !== 'all' && rsvpFilter !== status) return null;
+              return (
+                <div key={status} className="p-4">
+                  <p className="text-sm font-medium capitalize mb-2">{status} · {(allGuests ?? []).filter(g => (g.status ?? 'pending') === status).length}</p>
+                  <div className="grid gap-2">
+                    {(allGuests ?? []).filter(g => (g.status ?? 'pending') === status).slice(0, 50).map((g: any) => {
                     const isExpanded = expandedGuests.includes(g.id);
                     return (
                       <div key={g.id} className="py-2">
@@ -496,6 +569,11 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
                               <Badge className="text-xs">{g.registrationSource ?? 'invited'}</Badge>
                               <Badge className="text-xs">Seats: {g.confirmedSeats ?? 0}/{g.allocatedSeats ?? 1}</Badge>
                               {g.mealPreference && <Badge className="text-xs">{g.mealPreference}</Badge>}
+                              {getSelfPaidLabels(g).map((selfPaidLabel) => (
+                                <Badge key={`${g.id}-${selfPaidLabel}`} className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-100">
+                                  {selfPaidLabel}
+                                </Badge>
+                              ))}
                             </div>
                           </div>
 
@@ -528,7 +606,8 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
                   })}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>
@@ -868,6 +947,30 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
               <Button size="sm" variant="ghost" onClick={() => setPendingImport([])}>Cancel</Button>
             </div>
           )}
+          {pendingImport.length > 0 && (
+            <div className="mt-2 border rounded-md overflow-auto max-h-44">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 sticky top-0">
+                  <tr>
+                    <th className="p-2 text-left">Name</th>
+                    <th className="p-2 text-left">Email</th>
+                    <th className="p-2 text-left">Phone</th>
+                    <th className="p-2 text-left">Category</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingImport.slice(0, 200).map((g, i) => (
+                    <tr key={i} className="border-b">
+                      <td className="p-2">{g.name}</td>
+                      <td className="p-2 text-muted-foreground">{g.email}</td>
+                      <td className="p-2 text-muted-foreground">{g.phone}</td>
+                      <td className="p-2 text-muted-foreground">{g.category || 'General'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1001,13 +1104,13 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/40">
                     <Switch
                       id={`autopilot-${label.id}`}
-                      checked={autoPilotEnabled[label.id] ?? true}
+                      checked={autoPilotEnabled[label.id] ?? false}
                       onCheckedChange={(v) => setAutoPilotEnabled({ ...autoPilotEnabled, [label.id]: v })}
                     />
                     <label htmlFor={`autopilot-${label.id}`} className="text-xs text-muted-foreground cursor-pointer flex-1">
-                      Budget Auto-Pilot — instantly approve guest requests within the budget limit
+                      Budget Auto-Pilot — approve guest requests within budget limit without your review
                     </label>
-                    {(autoPilotEnabled[label.id] ?? true) && (
+                    {(autoPilotEnabled[label.id] ?? false) && (
                       <Badge className="bg-green-100 text-green-700 text-xs border-green-200 shrink-0">Auto-Pilot: ON</Badge>
                     )}
                   </div>
@@ -1015,7 +1118,7 @@ export default function ClientEventView({ eventId }: ClientEventViewProps) {
                 {offeredAddOns.length > 0 && (
                   <CardContent className="pt-0">
                     <p className="text-xs text-muted-foreground mb-3">
-                      Tick to offer a perk to this tier · Toggle right switch to mark it as client-covered (guest sees "Included")
+                      Check a perk to offer it to this tier. Once offered, toggle the switch to mark it as host-covered — guests see "Included" at no extra cost.
                     </p>
                     <div className="space-y-2">
                       {offeredAddOns.map((perk: any) => {

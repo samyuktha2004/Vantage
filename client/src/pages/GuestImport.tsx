@@ -53,11 +53,11 @@ export default function GuestImport() {
     try {
       // Import each guest to the database
       for (const guest of guests) {
-        await fetch(`/api/events/${id}/guests`, {
+        const res = await fetch(`/api/events/${id}/guests`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
-            eventId: parseInt(id!),
             name: guest.name,
             email: guest.email,
             phone: guest.phone,
@@ -66,6 +66,11 @@ export default function GuestImport() {
             specialRequests: guest.specialRequests,
           }),
         });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err?.message || `Failed to import ${guest.name}`);
+        }
       }
 
       toast({

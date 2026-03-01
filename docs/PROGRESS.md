@@ -1,20 +1,12 @@
 # Progress Tracker — Vantage
 
-**Last Updated:** February 2026
+**Last Updated:** March 1, 2026
 
 ---
 
 ## Status: Hackathon MVP — complete ✅
 
 All planned features implemented. Nomination logic intentionally dropped. See "Dropped Features" below.
-
----
-
-## Remaining Before Demo
-
-| #   | Task     | File | Size |
-| --- | -------- | ---- | ---- |
-| —   | All done | —    | —    |
 
 ---
 
@@ -64,6 +56,21 @@ All planned features implemented. Nomination logic intentionally dropped. See "D
 | Pending requests (read-only)       | Guest name visible per request                                  |
 | Import guests from Excel           | Same parse + POST flow as agent                                 |
 | Add custom labels                  | Dialog → POST `/api/events/:id/labels` → reflects in agent view |
+
+### Role Parity — Add/Edit Matrix
+
+| Capability                                    | Agent | Client         | UI Surface                                          | Backend Functional Parity                                                                    |
+| --------------------------------------------- | ----- | -------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Edit event invite/schedule content            | ✅    | ✅             | `EventSetup`, `ClientEventView`                     | `PATCH /api/events/:id` supports both with ownership/code checks                             |
+| Add/edit hotel bookings                       | ✅    | ✅             | `EventSetup` step 2                                 | `POST/PUT /api/events/:id/hotel-booking` supports both with event-scope checks               |
+| Add/edit travel options                       | ✅    | ✅             | `EventSetup` step 3                                 | `POST /api/events/:id/travel-options` supports both with event-scope checks                  |
+| Add custom labels                             | ✅    | ✅             | `EventDetails`, `EventSetup`, `ClientEventView`     | `POST /api/events/:eventId/labels` supports both with event-scope checks                     |
+| Edit labels (budget/name fields)              | ✅    | ✅             | `EventDetails`, `ClientEventView`                   | `PUT /api/labels/:id` supports both with event-scope checks                                  |
+| Add/edit perks                                | ✅    | ✅             | `EventDetails`, `ClientEventView`                   | `POST /api/events/:eventId/perks`, `PUT /api/perks/:id` support both with event-scope checks |
+| Edit label-perk inclusion/coverage            | ✅    | ✅             | `EventDetails`, `ClientEventView`                   | `PUT /api/labels/:labelId/perks/:perkId` supports both with event-scope checks               |
+| Guest add/import/update/delete                | ✅    | ✅             | `EventDetails`, `GuestImport`, `ClientEventView`    | Guest create/update/delete endpoints now enforce same event-scope role checks                |
+| Booking-level label inclusions (hotel/flight) | ✅    | ✅             | `EventSetup` (hotel + flight cards)                 | `GET/POST /api/events/:id/booking-label-inclusions` supports both with event-scope checks    |
+| Itinerary add/edit/delete                     | ✅    | ❌ (view only) | Agent `EventDetails` editor; client read-only cards | Intentionally agent-only (`/api/events/:eventId/itinerary*`)                                 |
 
 ### Guest Portal (4-Step Wizard)
 

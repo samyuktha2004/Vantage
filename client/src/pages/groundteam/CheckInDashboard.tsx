@@ -386,9 +386,10 @@ export default function CheckInDashboard() {
 
           {/* Live stats */}
           <div className="grid grid-cols-5 gap-1.5 text-center text-xs">
-            <div className="bg-primary-foreground/10 rounded p-2">
-              <p className="font-bold text-lg">{arrived}</p>
-              <p className="text-primary-foreground/70">Arrived</p>
+            <div className="bg-green-500/25 border border-green-400/30 rounded p-2">
+              <p className="font-bold text-2xl text-green-200">{arrived}</p>
+              <p className="text-green-200/80 font-medium">Arrived</p>
+              <p className="text-green-300/60 text-[10px] mt-0.5">of {confirmed}</p>
             </div>
             <div className="bg-primary-foreground/10 rounded p-2">
               <p className="font-bold text-lg">{confirmed}</p>

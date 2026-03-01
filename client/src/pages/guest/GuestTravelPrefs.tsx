@@ -379,12 +379,12 @@ export default function GuestTravelPrefs({ token }: { token: string }) {
           </Card>
         )}
 
-        {/* Hotel Stay */}
+        {/* Hotel Stay — Bleisure extension */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Hotel className="w-5 h-5 text-primary" />
-              Hotel Stay
+              Extend Your Stay <span className="text-sm font-normal text-muted-foreground">(Optional)</span>
             </CardTitle>
             <CardDescription>
               {hostCheckIn && hostCheckOut

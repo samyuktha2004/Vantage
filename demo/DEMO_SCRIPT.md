@@ -218,7 +218,7 @@
 **[Tab 1 — Agent → TechSummit 2026 in EventDetails]**
 
 - `TechSummit 2026 — Bengaluru` · 4–5 Mar 2026 · 70 delegates
-- Hotel: `Marriott MG Road` · 4–8 Jun · 120 rooms · ₹5,500/night
+- Hotel: `Garden City Grand` · 4–8 Jun · 120 rooms · ₹5,500/night
 - Labels: Executive / Standard / Speaker
 - > _"Imported 70 delegates, three tiers, hotel ready. Let me show what the client does differently here."_
 

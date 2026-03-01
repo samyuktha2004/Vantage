@@ -58,6 +58,7 @@ export default function ApprovalReview() {
         id: selectedRequest.id,
         status: reviewAction === "approve" ? "approved" : "rejected",
         notes: reviewNotes || undefined,
+        eventId,
       });
 
       toast({
@@ -79,7 +80,7 @@ export default function ApprovalReview() {
 
   const handleForwardToClient = async (request: any) => {
     try {
-      await updateRequest.mutateAsync({ id: request.id, status: "forwarded_to_client" });
+      await updateRequest.mutateAsync({ id: request.id, status: "forwarded_to_client", eventId });
       toast({ title: "Forwarded to Client", description: `${request.guest?.name}'s request sent to client for approval` });
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -100,7 +101,7 @@ export default function ApprovalReview() {
     let approved = 0;
     for (const req of pendingRequests) {
       try {
-        await updateRequest.mutateAsync({ id: req.id, status: "approved" });
+        await updateRequest.mutateAsync({ id: req.id, status: "approved", eventId });
         approved++;
         setBulkProgress(approved);
       } catch {

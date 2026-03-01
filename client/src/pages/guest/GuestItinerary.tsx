@@ -296,8 +296,33 @@ export default function GuestItinerary({ token }: { token: string }) {
                                           </div>
                                         ))}
                                       </div>
-                                      <div className="mt-2 text-xs opacity-90">
-                                        Remove the conflicting event(s) from your schedule to add this one.
+                                      <div className="mt-3 flex items-center gap-2">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="bg-white text-destructive border-destructive/30 hover:bg-destructive/5 text-xs h-7"
+                                          disabled={registerForEvent.isPending || unregisterFromEvent.isPending}
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            try {
+                                              for (const ce of conflicts) {
+                                                await unregisterFromEvent.mutateAsync(ce.id);
+                                              }
+                                              const result = await registerForEvent.mutateAsync(event.id);
+                                              if (!result?.conflicts?.length) {
+                                                toast({ title: "Switched!", description: `Now registered for "${event.title}"` });
+                                              }
+                                            } catch {
+                                              toast({ title: "Error", description: "Could not switch events", variant: "destructive" });
+                                            }
+                                          }}
+                                        >
+                                          {(registerForEvent.isPending || unregisterFromEvent.isPending)
+                                            ? <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                                            : <ArrowRight className="w-3 h-3 mr-1" />}
+                                          Switch to this event
+                                        </Button>
+                                        <span className="text-xs opacity-70">removes conflicting session</span>
                                       </div>
                                     </AlertDescription>
                                   </Alert>

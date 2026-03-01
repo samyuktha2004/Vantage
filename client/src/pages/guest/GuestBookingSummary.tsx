@@ -138,6 +138,12 @@ export default function GuestBookingSummary({ token }: { token: string }) {
           </CardHeader>
           <CardContent className="space-y-3">
             {/* Primary hotel details */}
+            {!guestData.primaryHotel && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                <Hotel className="w-4 h-4 flex-shrink-0" />
+                <span>Hotel details will be shared by your event coordinator</span>
+              </div>
+            )}
             {guestData.primaryHotel && (
               <div className="flex items-start gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20">
                 <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">

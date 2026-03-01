@@ -4,7 +4,21 @@ interface HotelBookingItem {
   numberOfRooms: number;
   checkInDate?: string;
   checkOutDate?: string;
+  baseRate?: number | null;
+  commissionType?: CommissionType | null;
+  commissionValue?: number | null;
+  clientFacingRate?: number | null;
   tboHotelData?: unknown;
+}
+
+interface BookingLabelInclusionItem {
+  id: number;
+  eventId: number;
+  labelId: number;
+  bookingType: "hotel" | "flight";
+  bookingId: number;
+  isIncluded: boolean;
+  inclusions?: string | null;
 }
 import { useState, useEffect, useMemo } from "react";
 import { useLocation, useParams } from "wouter";
@@ -15,7 +29,7 @@ import { DashboardLayout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useLabels } from "@/hooks/use-labels";
+import { useLabels, useCreateLabel } from "@/hooks/use-labels";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -50,6 +64,7 @@ type HotelBookingFormValues = z.infer<typeof hotelBookingSchema>;
 type HotelMode = "tbo" | "manual";
 type CommissionType = "amount" | "percentage";
 type HotelBookingSource = "tbo" | "mock" | "manual" | null;
+type BookingInclusionType = "hotel" | "flight";
 
 interface HotelBookingItem {
   id: number;
@@ -57,6 +72,10 @@ interface HotelBookingItem {
   numberOfRooms: number;
   checkInDate?: string;
   checkOutDate?: string;
+  baseRate?: number | null;
+  commissionType?: CommissionType | null;
+  commissionValue?: number | null;
+  clientFacingRate?: number | null;
   tboHotelData?: unknown;
 }
 
@@ -84,6 +103,10 @@ export default function EventSetup() {
   const [hotelBaseRate, setHotelBaseRate] = useState(0);
   const [hotelCommissionType, setHotelCommissionType] = useState<CommissionType>("amount");
   const [hotelCommissionValue, setHotelCommissionValue] = useState(0);
+  const [editingHotelId, setEditingHotelId] = useState<number | null>(null);
+  const [editHotelBaseRate, setEditHotelBaseRate] = useState(0);
+  const [editHotelCommissionType, setEditHotelCommissionType] = useState<CommissionType>("amount");
+  const [editHotelCommissionValue, setEditHotelCommissionValue] = useState(0);
 
   // Step 3 — multi-transport state
   interface BookedTransport {
@@ -159,8 +182,15 @@ export default function EventSetup() {
   });
 
   const { data: labels } = useLabels(Number(id));
+  const createLabel = useCreateLabel();
+  const [newLabelName, setNewLabelName] = useState("");
+  const [isAddingLabel, setIsAddingLabel] = useState(false);
   const [clientDetailsExists, setClientDetailsExists] = useState<boolean | null>(null);
   const [guestCategorySelections, setGuestCategorySelections] = useState<Record<number, boolean>>({});
+  const [bookingLabelInclusions, setBookingLabelInclusions] = useState<BookingLabelInclusionItem[]>([]);
+  const [inclusionDrafts, setInclusionDrafts] = useState<Record<string, string>>({});
+  const [inclusionChecks, setInclusionChecks] = useState<Record<string, boolean>>({});
+  const [savingInclusionKey, setSavingInclusionKey] = useState<string | null>(null);
 
   const hotelForm = useForm<HotelBookingFormValues>({
     resolver: zodResolver(hotelBookingSchema),
@@ -233,11 +263,12 @@ export default function EventSetup() {
     setIsDataLoading(true);
     const prefillClientName = (new URLSearchParams(window.location.search).get("clientName") || "").trim();
     try {
-      const [eventRes, travelRes, hotelRes, clientRes] = await Promise.all([
+      const [eventRes, travelRes, hotelRes, clientRes, inclusionsRes] = await Promise.all([
         fetch(`/api/events/${id}`, { credentials: "include" }),
         fetch(`/api/events/${id}/travel-options`, { credentials: "include" }),
         fetch(`/api/events/${id}/hotel-bookings`, { credentials: "include" }),
         fetch(`/api/events/${id}/client-details`, { credentials: "include" }),
+        fetch(`/api/events/${id}/booking-label-inclusions`, { credentials: "include" }),
       ]);
 
       if (eventRes.ok) {
@@ -281,6 +312,13 @@ export default function EventSetup() {
         }
       }
 
+      if (inclusionsRes.ok) {
+        const rows = await inclusionsRes.json();
+        if (Array.isArray(rows)) {
+          setBookingLabelInclusions(rows);
+        }
+      }
+
       // Prefill client details form when editing an existing event
       if (clientRes.ok) {
         const cd = await clientRes.json();
@@ -313,6 +351,50 @@ export default function EventSetup() {
       console.error("Failed to fetch event data", error);
     } finally {
       setIsDataLoading(false);
+    }
+  };
+
+  const getInclusionRecord = (bookingType: BookingInclusionType, bookingId: number, labelId: number) => {
+    return bookingLabelInclusions.find(
+      (row) => row.bookingType === bookingType && row.bookingId === bookingId && row.labelId === labelId,
+    );
+  };
+
+  const handleSaveBookingLabelInclusion = async (
+    bookingType: BookingInclusionType,
+    bookingId: number,
+    labelId: number,
+    isIncluded: boolean,
+    inclusions: string,
+  ) => {
+    const key = `${bookingType}-${bookingId}-${labelId}`;
+    try {
+      setSavingInclusionKey(key);
+      const res = await fetch(`/api/events/${id}/booking-label-inclusions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ bookingType, bookingId, labelId, isIncluded, inclusions }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.message || "Failed to save label inclusion");
+      }
+
+      const saved = await res.json();
+      setBookingLabelInclusions((prev) => {
+        const next = prev.filter(
+          (row) => !(row.bookingType === bookingType && row.bookingId === bookingId && row.labelId === labelId),
+        );
+        next.push(saved);
+        return next;
+      });
+      toast({ title: "Inclusion updated" });
+    } catch (error: any) {
+      toast({ title: "Failed to update inclusion", description: error?.message || "", variant: "destructive" });
+    } finally {
+      setSavingInclusionKey(null);
     }
   };
 
@@ -484,10 +566,7 @@ export default function EventSetup() {
         const err = await res.json();
         throw new Error(err.message ?? "Failed to save transport");
       }
-      setBookedTransports((prev) => [
-        ...prev,
-        { id: `manual-${Date.now()}`, mode: manualMode, from: manualFrom, to: manualTo, date: manualDate, source: "manual" },
-      ]);
+      await fetchEventData();
       setManualFrom(""); setManualTo(""); setManualDate(""); setManualReturn("");
       setAddPanelOpen(false); setAddType(null);
       toast({ title: "Transport added", description: `${manualMode} from ${manualFrom} → ${manualTo}` });
@@ -668,6 +747,33 @@ export default function EventSetup() {
 
                   <div className="space-y-4">
                     <FormLabel>Guest Categories</FormLabel>
+                    <div className="flex items-center space-x-2 mb-2">
+                      <input
+                        placeholder="New category name"
+                        value={newLabelName}
+                        onChange={(e) => setNewLabelName(e.target.value)}
+                        className="px-2 py-1 rounded border border-input bg-background text-sm"
+                      />
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={async () => {
+                          if (!newLabelName || !newLabelName.trim()) return;
+                          try {
+                            setIsAddingLabel(true);
+                            await createLabel.mutateAsync({ eventId: Number(id), name: newLabelName.trim() });
+                            setNewLabelName("");
+                            toast({ title: "Category created" });
+                          } catch (e: any) {
+                            toast({ title: "Failed to create", description: e?.message || "", variant: "destructive" });
+                          } finally {
+                            setIsAddingLabel(false);
+                          }
+                        }}
+                      >
+                        {isAddingLabel ? 'Creating...' : 'Add Category'}
+                      </Button>
+                    </div>
                     {labels && labels.length > 0 ? (
                       <div className="grid grid-cols-1 gap-2">
                         {labels.map((lbl: any) => (
@@ -832,11 +938,34 @@ export default function EventSetup() {
                       const parsed = parseTboHotelData(booking.tboHotelData);
                       const roomType = parsed?.roomTypeName || parsed?.originalRoom?.RoomTypeName;
                       const sourceLabel = parsed ? "TBO" : "Manual";
+                      const computedClientRate =
+                        booking.baseRate && booking.baseRate > 0
+                          ? computeClientRate(
+                              Number(booking.baseRate),
+                              (booking.commissionType as CommissionType) || "amount",
+                              Number(booking.commissionValue || 0)
+                            )
+                          : null;
                       return (
                         <div key={booking.id} className="rounded-md border bg-background px-3 py-2">
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-sm font-medium truncate">{booking.hotelName}</p>
-                            <Badge variant="outline" className="text-xs">{sourceLabel}</Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs">{sourceLabel}</Badge>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setEditingHotelId(booking.id);
+                                  setEditHotelBaseRate(Number(booking.baseRate || 0));
+                                  setEditHotelCommissionType((booking.commissionType as CommissionType) || "amount");
+                                  setEditHotelCommissionValue(Number(booking.commissionValue || 0));
+                                }}
+                              >
+                                Edit Pricing
+                              </Button>
+                            </div>
                           </div>
                           <p className="text-xs text-muted-foreground">
                             {booking.numberOfRooms} rooms{roomType ? ` • ${roomType}` : ""}
@@ -844,6 +973,130 @@ export default function EventSetup() {
                               ? ` • ${new Date(booking.checkInDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} - ${new Date(booking.checkOutDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
                               : ""}
                           </p>
+                          {computedClientRate !== null && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Pricing: Base ₹{Number(booking.baseRate || 0).toLocaleString("en-IN")} • Commission {booking.commissionType === "percentage" ? `${Number(booking.commissionValue || 0)}%` : `₹${Number(booking.commissionValue || 0).toLocaleString("en-IN")}`} • Client ₹{computedClientRate.toLocaleString("en-IN")}
+                            </p>
+                          )}
+                          {!!labels?.length && (
+                            <div className="mt-3 rounded-md border bg-muted/10 p-3 space-y-2">
+                              <p className="text-xs font-medium">Hotel inclusions by label</p>
+                              {labels.map((lbl: any) => {
+                                const key = `hotel-${booking.id}-${lbl.id}`;
+                                const saved = getInclusionRecord("hotel", booking.id, lbl.id);
+                                const checked = inclusionChecks[key] ?? Boolean(saved?.isIncluded);
+                                const textValue = inclusionDrafts[key] ?? (saved?.inclusions || "");
+                                return (
+                                  <div key={lbl.id} className="grid grid-cols-1 md:grid-cols-[140px_1fr_auto] gap-2 items-center">
+                                    <label className="text-xs font-medium">{lbl.name}</label>
+                                    <Input
+                                      value={textValue}
+                                      onChange={(e) => setInclusionDrafts((prev) => ({ ...prev, [key]: e.target.value }))}
+                                      placeholder="E.g. breakfast, airport transfer"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        className="w-4 h-4 rounded"
+                                        checked={checked}
+                                        onChange={(e) => setInclusionChecks((prev) => ({ ...prev, [key]: e.target.checked }))}
+                                      />
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={savingInclusionKey === key}
+                                        onClick={() => handleSaveBookingLabelInclusion("hotel", booking.id, lbl.id, checked, textValue)}
+                                      >
+                                        {savingInclusionKey === key ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                          {editingHotelId === booking.id && (
+                            <div className="mt-3 rounded-md border p-3 space-y-3 bg-muted/10">
+                              <p className="text-xs font-medium">Edit hotel pricing</p>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="space-y-1.5">
+                                  <Label>Base Rate (₹)</Label>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    value={editHotelBaseRate || ""}
+                                    onChange={(e) => setEditHotelBaseRate(Number(e.target.value) || 0)}
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>Commission Type</Label>
+                                  <Select value={editHotelCommissionType} onValueChange={(v) => setEditHotelCommissionType(v as CommissionType)}>
+                                    <SelectTrigger className="bg-white text-gray-900 border-input">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-white text-gray-900 border-input">
+                                      <SelectItem className="bg-white text-gray-900 data-[highlighted]:bg-gray-100 data-[state=checked]:bg-primary/10" value="amount">Amount (₹)</SelectItem>
+                                      <SelectItem className="bg-white text-gray-900 data-[highlighted]:bg-gray-100 data-[state=checked]:bg-primary/10" value="percentage">Percentage (%)</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>Commission Value</Label>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    value={editHotelCommissionValue || ""}
+                                    onChange={(e) => setEditHotelCommissionValue(Number(e.target.value) || 0)}
+                                    placeholder={editHotelCommissionType === "percentage" ? "e.g. 12" : "e.g. 800"}
+                                  />
+                                </div>
+                              </div>
+                              {editHotelBaseRate > 0 && (
+                                <p className="text-xs text-muted-foreground">
+                                  Client-facing rate: ₹{computeClientRate(editHotelBaseRate, editHotelCommissionType, editHotelCommissionValue).toLocaleString("en-IN")}
+                                </p>
+                              )}
+                              <div className="flex gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={async () => {
+                                    try {
+                                      const payload = {
+                                        baseRate: editHotelBaseRate > 0 ? editHotelBaseRate : null,
+                                        commissionType: editHotelCommissionType,
+                                        commissionValue: editHotelCommissionValue > 0 ? editHotelCommissionValue : 0,
+                                        clientFacingRate: editHotelBaseRate > 0
+                                          ? computeClientRate(editHotelBaseRate, editHotelCommissionType, editHotelCommissionValue)
+                                          : null,
+                                      };
+                                      const res = await fetch(`/api/events/${id}/hotel-booking/${booking.id}`, {
+                                        method: "PUT",
+                                        headers: { "Content-Type": "application/json" },
+                                        credentials: "include",
+                                        body: JSON.stringify(payload),
+                                      });
+                                      if (!res.ok) {
+                                        const err = await res.json().catch(() => ({}));
+                                        throw new Error(err?.message || "Failed to update hotel pricing");
+                                      }
+                                      toast({ title: "Hotel pricing updated" });
+                                      setEditingHotelId(null);
+                                      fetchEventData();
+                                    } catch (e: any) {
+                                      toast({ title: "Update failed", description: e?.message || "", variant: "destructive" });
+                                    }
+                                  }}
+                                >
+                                  Save Pricing
+                                </Button>
+                                <Button type="button" size="sm" variant="outline" onClick={() => setEditingHotelId(null)}>
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1043,18 +1296,64 @@ export default function EventSetup() {
                 <div className="space-y-2">
                   {bookedTransports.map((t) => {
                     const ModeIcon = TRANSPORT_MODES.find((m) => m.value === t.mode)?.Icon ?? Plane;
+                    const parsedBookingId = Number(t.id);
+                    const hasSavedBookingId = Number.isInteger(parsedBookingId) && parsedBookingId > 0;
                     return (
                       <div key={t.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                        <div className="flex items-center gap-3">
-                          <ModeIcon className="w-4 h-4 text-primary" />
-                          <div>
-                            <p className="text-sm font-medium capitalize">
-                              {t.mode} — {t.from} → {t.to}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {t.date} · {t.source === "tbo" ? "TBO booked" : "Manual"}
-                            </p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3">
+                            <ModeIcon className="w-4 h-4 text-primary" />
+                            <div>
+                              <p className="text-sm font-medium capitalize">
+                                {t.mode} — {t.from} → {t.to}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {t.date} · {t.source === "tbo" ? "TBO booked" : "Manual"}
+                              </p>
+                            </div>
                           </div>
+
+                          {t.mode === "flight" && !!labels?.length && (
+                            <div className="mt-3 rounded-md border bg-muted/10 p-3 space-y-2">
+                              <p className="text-xs font-medium">Flight inclusions by label</p>
+                              {!hasSavedBookingId && (
+                                <p className="text-xs text-muted-foreground">Save/reload this flight booking to attach label inclusions.</p>
+                              )}
+                              {hasSavedBookingId && labels.map((lbl: any) => {
+                                const key = `flight-${parsedBookingId}-${lbl.id}`;
+                                const saved = getInclusionRecord("flight", parsedBookingId, lbl.id);
+                                const checked = inclusionChecks[key] ?? Boolean(saved?.isIncluded);
+                                const textValue = inclusionDrafts[key] ?? (saved?.inclusions || "");
+                                return (
+                                  <div key={lbl.id} className="grid grid-cols-1 md:grid-cols-[140px_1fr_auto] gap-2 items-center">
+                                    <label className="text-xs font-medium">{lbl.name}</label>
+                                    <Input
+                                      value={textValue}
+                                      onChange={(e) => setInclusionDrafts((prev) => ({ ...prev, [key]: e.target.value }))}
+                                      placeholder="E.g. priority boarding, lounge access"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        className="w-4 h-4 rounded"
+                                        checked={checked}
+                                        onChange={(e) => setInclusionChecks((prev) => ({ ...prev, [key]: e.target.checked }))}
+                                      />
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={savingInclusionKey === key}
+                                        onClick={() => handleSaveBookingLabelInclusion("flight", parsedBookingId, lbl.id, checked, textValue)}
+                                      >
+                                        {savingInclusionKey === key ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                         <Button
                           variant="ghost" size="icon"
@@ -1109,17 +1408,7 @@ export default function EventSetup() {
                       <FlightSearchPanel
                         eventId={Number(id)}
                         onBooked={(data) => {
-                          setBookedTransports((prev) => [
-                            ...prev,
-                            {
-                              id: `tbo-${Date.now()}`,
-                              mode: "flight",
-                              from: data.fromLocation,
-                              to: data.toLocation,
-                              date: data.departureDate,
-                              source: "tbo",
-                            },
-                          ]);
+                          fetchEventData();
                           setAddPanelOpen(false);
                           setAddType(null);
                           toast({ title: "Flight booked!", description: `${data.fromLocation} → ${data.toLocation} via TBO` });

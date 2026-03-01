@@ -158,9 +158,9 @@ export default function GuestAddOns({ token }: { token: string }) {
     }
     // requestable
     if (effectiveRate <= remainingBudget) {
-      return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">₹{effectiveRate.toLocaleString("en-IN")} · Budget covered</Badge>;
+      return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">₹{effectiveRate.toLocaleString("en-IN")} · Auto-approved</Badge>;
     }
-    return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100 text-xs">₹{effectiveRate.toLocaleString("en-IN")} · Agent approves</Badge>;
+    return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100 text-xs">₹{effectiveRate.toLocaleString("en-IN")} · Needs host approval</Badge>;
   };
 
   const getPerkAction = (perk: Perk) => {
@@ -254,10 +254,10 @@ export default function GuestAddOns({ token }: { token: string }) {
           </div>
         ) : (
           <Card>
-            <CardContent className="pt-6 text-center py-10">
-              <Sparkles className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground">No add-ons available for your invitation tier yet.</p>
-              <p className="text-sm text-muted-foreground mt-1">Check back closer to the event date.</p>
+            <CardContent className="pt-6 text-center py-10 space-y-2">
+              <Sparkles className="w-8 h-8 text-muted-foreground/40 mx-auto" />
+              <p className="text-sm font-medium text-muted-foreground">No extras for your tier yet</p>
+              <p className="text-xs text-muted-foreground/70">Your host may add perks as the event approaches</p>
             </CardContent>
           </Card>
         )}
